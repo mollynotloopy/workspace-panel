@@ -929,6 +929,17 @@ let timerRunning = false;
 let timerTaskId = "";
 let timerAlerted = false;
 let audioCtx = null;
+let timerStartTimestamp = null;
+
+function syncTimerFromClock() {
+  if (!timerRunning || timerStartTimestamp === null) return;
+  timerSeconds = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+  updateTimerDisplay();
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") syncTimerFromClock();
+});
 
 function populateTimerTaskSelect() {
   const select = document.getElementById("pomodoro-task-select");
@@ -1042,13 +1053,13 @@ document.getElementById("timer-toggle").addEventListener("click", () => {
   if (timerRunning) {
     btn.textContent = "Pause";
     document.getElementById("timer-complete").style.display = "inline-block";
-    timerInterval = setInterval(() => {
-      timerSeconds++;
-      updateTimerDisplay();
-    }, 1000);
+    timerStartTimestamp = Date.now() - timerSeconds * 1000;
+    timerInterval = setInterval(syncTimerFromClock, 1000);
   } else {
     btn.textContent = "Start";
     clearInterval(timerInterval);
+    timerSeconds = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+    updateTimerDisplay();
   }
 });
 
@@ -1056,6 +1067,7 @@ document.getElementById("timer-reset").addEventListener("click", () => {
   clearInterval(timerInterval);
   timerRunning = false;
   timerSeconds = 0;
+  timerStartTimestamp = null;
   timerAlerted = false;
   document.getElementById("timer-toggle").textContent = "Start";
   document.getElementById("timer-alert").classList.remove("show");
@@ -1067,8 +1079,10 @@ document.getElementById("timer-complete").addEventListener("click", () => {
   const task = currentTimerTask();
   if (!task) return;
 
+  syncTimerFromClock();
   clearInterval(timerInterval);
   timerRunning = false;
+  timerStartTimestamp = null;
 
   const minutes = Math.max(1, Math.round(timerSeconds / 60));
   sessions.push({ id: uid(), taskId: task.id, category: task.category, date: todayStr(), minutes });
