@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Molly's Panel</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+<div class="app">
+
+  <!-- ===== Tabs ===== -->
+  <nav class="tabbar">
+    <div class="tabbar-inner">
+      <button class="tab active" data-tab="workspace">Workspace</button>
+      <button class="tab" data-tab="pomodoro">Timer</button>
+      <button class="tab" data-tab="achievements">Achievements</button>
+    </div>
+  </nav>
+
+  <!-- ===== WORKSPACE PANEL ===== -->
+  <main id="workspace" class="panel active">
+
+    <!-- Greeting -->
+    <header class="greeting">
+      <p class="greeting-eyebrow" id="greeting-date"></p>
+      <h1 id="greeting-text">Hello, Molly <span class="wave">:)</span></h1>
+    </header>
+
+    <!-- Stats -->
+    <section class="stats-grid">
+      <div class="card stat-card">
+        <span class="stat-label">Tasks Awaiting</span>
+        <span class="stat-value" id="stat-awaiting">0</span>
+      </div>
+      <div class="card stat-card">
+        <span class="stat-label">High Priority</span>
+        <span class="stat-value" id="stat-priority">0</span>
+      </div>
+      <div class="card stat-card">
+        <span class="stat-label">Est. Time Today</span>
+        <span class="stat-value" id="stat-time">0h</span>
+      </div>
+      <div class="card stat-card">
+        <span class="stat-label">Worked Today</span>
+        <span class="stat-value" id="stat-worked">0h</span>
+      </div>
+      <div class="card stat-card">
+        <span class="stat-label">Completed Today</span>
+        <span class="stat-value" id="stat-done">0</span>
+      </div>
+    </section>
+
+    <div class="workspace-grid">
+
+      <!-- Left: Calendar -->
+      <section class="card calendar-card">
+        <div class="calendar-header">
+          <button class="icon-btn" id="cal-prev">&#8249;</button>
+          <h2 id="cal-month-label"></h2>
+          <button class="icon-btn" id="cal-next">&#8250;</button>
+        </div>
+        <div class="calendar-weekdays">
+          <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+        </div>
+        <div class="calendar-grid" id="calendar-grid"></div>
+        <button class="text-btn" id="cal-clear" style="display:none;">Show all tasks</button>
+      </section>
+
+      <!-- Right: Task Overview -->
+      <section class="tasks-section">
+        <div class="tasks-header">
+          <h2 id="tasks-title">All Tasks</h2>
+          <div class="tasks-controls">
+            <select id="category-filter">
+              <option value="all">All categories</option>
+            </select>
+            <button class="btn-primary" id="add-task-btn">+ Add Task</button>
+          </div>
+        </div>
+
+        <div id="tasks-categories" class="tasks-categories"></div>
+      </section>
+
+    </div>
+
+    <!-- Weekly Summary -->
+    <section class="summary-section">
+      <header class="greeting summary-header">
+        <p class="greeting-eyebrow" id="summary-week-label"></p>
+        <h1>Weekly Summary</h1>
+      </header>
+
+      <section class="stats-grid summary-stats">
+        <div class="card stat-card">
+          <span class="stat-label">Total Hours This Week</span>
+          <span class="stat-value" id="summary-total-hours">0h</span>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-label">Vs Last Week</span>
+          <span class="stat-value" id="summary-week-delta">--</span>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-label">Productivity This Week</span>
+          <span class="stat-value" id="summary-productivity">--</span>
+        </div>
+        <div class="card stat-card">
+          <span class="stat-label">Productivity Last Week</span>
+          <span class="stat-value" id="summary-productivity-last">--</span>
+        </div>
+      </section>
+
+      <div class="summary-layout">
+        <section class="card pie-card">
+          <h2>Time by Category</h2>
+          <div class="pie-wrap">
+            <div class="pie-chart" id="pie-chart"></div>
+            <div class="pie-legend" id="pie-legend"></div>
+          </div>
+        </section>
+
+        <section class="card summary-extra-card">
+          <h2>More Stats</h2>
+          <div id="summary-extra" class="summary-extra"></div>
+        </section>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ===== TIMER PANEL ===== -->
+  <main id="pomodoro" class="panel">
+    <header class="greeting">
+      <p class="greeting-eyebrow">Focus Timer</p>
+      <h1>What are we working on?</h1>
+    </header>
+
+    <div class="pomodoro-layout">
+      <section class="card timer-card">
+        <label class="field-label" for="pomodoro-task-select">Task</label>
+        <select id="pomodoro-task-select">
+          <option value="">Select a task...</option>
+        </select>
+
+        <div class="timer-display">
+          <span class="timer-time" id="timer-time">00:00</span>
+          <div class="timer-progress"><div class="timer-progress-bar" id="timer-progress-bar"></div></div>
+          <span class="timer-estimate" id="timer-estimate-label">Pick a task to see its estimate</span>
+        </div>
+
+        <p class="timer-alert" id="timer-alert">You've passed your estimated time — wrap it up!</p>
+
+        <div class="timer-controls">
+          <button class="btn-primary" id="timer-toggle" disabled>Start</button>
+          <button class="btn-secondary" id="timer-reset">Reset</button>
+          <button class="btn-primary" id="timer-complete" style="display:none;">Complete Task</button>
+        </div>
+      </section>
+
+      <section class="card session-card">
+        <h2>Today's Sessions</h2>
+        <div id="session-list" class="session-list"></div>
+      </section>
+    </div>
+  </main>
+
+  <!-- ===== ACHIEVEMENTS PANEL ===== -->
+  <main id="achievements" class="panel">
+    <header class="greeting">
+      <p class="greeting-eyebrow" id="achievements-count-label"></p>
+      <h1>Achievements</h1>
+    </header>
+    <div id="achievements-grid" class="achievements-grid"></div>
+  </main>
+
+</div>
+
+<!-- ===== Add / Edit Task Modal ===== -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h2 id="modal-title">New Task</h2>
+      <button class="icon-btn" id="modal-close">&times;</button>
+    </div>
+    <form id="task-form">
+      <input type="hidden" id="task-id" />
+
+      <label class="field">
+        <span>Title</span>
+        <input type="text" id="task-title" required placeholder="e.g. Finish resume draft" />
+      </label>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Category</span>
+          <div class="category-input-row">
+            <select id="task-category"></select>
+            <button type="button" class="icon-btn" id="add-category-btn" title="Add new category">+</button>
+          </div>
+          <div class="new-category-row" id="new-category-row" style="display:none;">
+            <input type="text" id="new-category-input" placeholder="New category name" />
+            <button type="button" class="btn-secondary" id="new-category-confirm">Add</button>
+          </div>
+        </label>
+        <label class="field">
+          <span>Priority</span>
+          <select id="task-priority">
+            <option value="high">High</option>
+            <option value="medium" selected>Medium</option>
+            <option value="low">Low</option>
+            <option value="time-sensitive">Time-sensitive</option>
+          </select>
+        </label>
+      </div>
+
+      <div class="field-row">
+        <label class="field">
+          <span>Due date</span>
+          <input type="date" id="task-due-date" />
+        </label>
+        <label class="field">
+          <span>Due time</span>
+          <input type="time" id="task-due-time" />
+        </label>
+      </div>
+
+      <label class="field">
+        <span>Estimated time (minutes)</span>
+        <input type="number" id="task-estimate" min="0" step="5" placeholder="e.g. 30" />
+      </label>
+
+      <label class="field">
+        <span>Link (optional)</span>
+        <input type="url" id="task-link" placeholder="https://" />
+      </label>
+
+      <label class="field">
+        <span>Notes (optional)</span>
+        <textarea id="task-notes" rows="2" placeholder="Any extra detail..."></textarea>
+      </label>
+
+      <div class="modal-actions">
+        <button type="button" class="btn-ghost" id="delete-task-btn" style="display:none;">Delete</button>
+        <div class="spacer"></div>
+        <button type="button" class="btn-secondary" id="cancel-task-btn">Cancel</button>
+        <button type="submit" class="btn-primary">Save Task</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- ===== Achievement toasts ===== -->
+<div id="toast-container" class="toast-container"></div>
+
+<!-- ===== Pixel cat mascot ===== -->
+<div class="pixel-cat" id="pixel-cat" title="drag me!">
+  <img src="assets/cat-mascot.png" alt="pixel cat mascot" draggable="false" />
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
