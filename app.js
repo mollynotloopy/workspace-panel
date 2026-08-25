@@ -907,14 +907,15 @@ let audioCtx = null;
 function populateTimerTaskSelect() {
   const select = document.getElementById("pomodoro-task-select");
   const current = select.value;
+  const today = todayStr();
   select.innerHTML = `<option value="">Select a task...</option>`;
-  tasks.filter(t => !t.completed).forEach(t => {
+  tasks.filter(t => !t.completed && t.dueDate === today).forEach(t => {
     const opt = document.createElement("option");
     opt.value = t.id;
     opt.textContent = `${t.title} (${t.category})`;
     select.appendChild(opt);
   });
-  if (current && tasks.some(t => t.id === current && !t.completed)) {
+  if (current && tasks.some(t => t.id === current && !t.completed && t.dueDate === today)) {
     select.value = current;
   }
 }
