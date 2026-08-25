@@ -692,40 +692,45 @@ form.addEventListener("submit", (e) => {
 });
 
 /* ===================== Achievements ===================== */
+const ACHIEVEMENT_CATEGORIES = ["Milestones", "Streaks", "Time Tracked", "Fun"];
+
 const ACHIEVEMENTS = [
-  { id: "first-task",   title: "First Steps",       desc: "Complete your first task.",                          check: ctx => ctx.totalCompleted >= 1,        progress: ctx => [ctx.totalCompleted, 1] },
-  { id: "momentum-10",  title: "Getting Momentum",  desc: "Complete 10 tasks in total.",                        check: ctx => ctx.totalCompleted >= 10,       progress: ctx => [ctx.totalCompleted, 10] },
-  { id: "quarter-25",   title: "Quarter Century",   desc: "Complete 25 tasks in total.",                        check: ctx => ctx.totalCompleted >= 25,       progress: ctx => [ctx.totalCompleted, 25] },
-  { id: "half-50",      title: "Half Century",      desc: "Complete 50 tasks in total.",                        check: ctx => ctx.totalCompleted >= 50,       progress: ctx => [ctx.totalCompleted, 50] },
-  { id: "century-100",  title: "Century",           desc: "Complete 100 tasks in total.",                       check: ctx => ctx.totalCompleted >= 100,      progress: ctx => [ctx.totalCompleted, 100] },
-  { id: "legend-250",   title: "Task Legend",       desc: "Complete 250 tasks in total.",                       check: ctx => ctx.totalCompleted >= 250,      progress: ctx => [ctx.totalCompleted, 250] },
-  { id: "task-master",  title: "Task Master",       desc: "Complete every task due today.",                     check: ctx => ctx.todayAllDone },
-  { id: "streak-3",     title: "On a Roll",         desc: "Complete all due tasks on time, 3 days in a row.",   check: ctx => ctx.streak >= 3,                 progress: ctx => [ctx.streak, 3] },
-  { id: "streak-7",     title: "Unstoppable",       desc: "7-day on-time completion streak.",                   check: ctx => ctx.streak >= 7,                 progress: ctx => [ctx.streak, 7] },
-  { id: "streak-14",    title: "Two Weeks Strong",  desc: "14-day on-time completion streak.",                  check: ctx => ctx.streak >= 14,                progress: ctx => [ctx.streak, 14] },
-  { id: "streak-30",    title: "Unbreakable",       desc: "30-day on-time completion streak.",                  check: ctx => ctx.streak >= 30,                progress: ctx => [ctx.streak, 30] },
-  { id: "focus-1",      title: "Focused",           desc: "Finish your first timed work session.",              check: ctx => ctx.totalSessions >= 1,          progress: ctx => [ctx.totalSessions, 1] },
-  { id: "deep-work",    title: "Deep Work",         desc: "Log 2+ hours of tracked time in a single day.",      check: ctx => ctx.maxDayMinutes >= 120,        progress: ctx => [ctx.maxDayMinutes, 120, true] },
-  { id: "half-day",     title: "Half Day Hero",     desc: "Track 4+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 240,        progress: ctx => [ctx.maxDayMinutes, 240, true] },
-  { id: "full-shift",   title: "Full Shift",        desc: "Track 6+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 360,        progress: ctx => [ctx.maxDayMinutes, 360, true] },
-  { id: "marathon-day", title: "Marathon Day",      desc: "Track 8+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 480,        progress: ctx => [ctx.maxDayMinutes, 480, true] },
-  { id: "hours-10",     title: "10 Hour Club",      desc: "Track 10 hours of work in total.",                   check: ctx => ctx.totalTrackedMinutes >= 600,  progress: ctx => [ctx.totalTrackedMinutes, 600, true] },
-  { id: "hours-50",     title: "50 Hour Club",      desc: "Track 50 hours of work in total.",                   check: ctx => ctx.totalTrackedMinutes >= 3000, progress: ctx => [ctx.totalTrackedMinutes, 3000, true] },
-  { id: "hours-100",    title: "100 Hour Club",     desc: "Track 100 hours of work in total.",                  check: ctx => ctx.totalTrackedMinutes >= 6000, progress: ctx => [ctx.totalTrackedMinutes, 6000, true] },
-  { id: "high-five",    title: "High Five",         desc: "Complete 5 high-priority tasks.",                    check: ctx => ctx.highPriorityCompleted >= 5,  progress: ctx => [ctx.highPriorityCompleted, 5] },
-  { id: "priority-pro", title: "Priority Pro",      desc: "Complete 25 high-priority tasks.",                   check: ctx => ctx.highPriorityCompleted >= 25, progress: ctx => [ctx.highPriorityCompleted, 25] },
-  { id: "well-rounded", title: "Well Rounded",      desc: "Complete tasks in 4 different categories.",          check: ctx => ctx.distinctCategoriesCompleted >= 4, progress: ctx => [ctx.distinctCategoriesCompleted, 4] },
-  { id: "habit",        title: "Creature of Habit", desc: "Complete 10 occurrences from a recurring series.",   check: ctx => ctx.recurringCompletedCount >= 10, progress: ctx => [ctx.recurringCompletedCount, 10] },
-  { id: "efficiency-20",title: "Efficiency Expert", desc: "Finish 20 tasks within their estimated time.",       check: ctx => ctx.onTimeCompletedCount >= 20,  progress: ctx => [ctx.onTimeCompletedCount, 20] },
-  { id: "cat-champion", title: "Category Champion", desc: "Complete 20 tasks in a single category.",            check: ctx => ctx.maxCategoryCount >= 20,       progress: ctx => [ctx.maxCategoryCount, 20] },
-  { id: "speed-runner", title: "Speed Runner",      desc: "Finish a task in under half its estimated time.",    check: ctx => ctx.speedRunner },
-  { id: "early-bird",   title: "Early Bird",        desc: "Complete a task before 8am.",                        check: ctx => ctx.earlyBird },
-  { id: "night-owl",    title: "Night Owl",         desc: "Complete a task after 11pm.",                        check: ctx => ctx.nightOwl },
-  { id: "weekend-warrior", title: "Weekend Warrior", desc: "Complete a task on a Saturday or Sunday.",          check: ctx => ctx.weekendWarrior },
-  { id: "multitasker",  title: "Multitasker",       desc: "Track time in 3+ categories in a single day.",       check: ctx => ctx.multitaskerDay },
-  { id: "perfect-week", title: "Perfect Week",      desc: "100% on-time productivity in a single week.",        check: ctx => ctx.weeklyPerfect },
-  { id: "reliable-2wk", title: "Reliable",          desc: "80%+ productivity two weeks in a row.",              check: ctx => ctx.reliableTwoWeeks },
-  { id: "steady-4wk",   title: "Steady Hand",       desc: "80%+ productivity four weeks in a row.",             check: ctx => ctx.steadyFourWeeks },
+  { id: "first-task",   category: "Milestones",  title: "First Steps",       desc: "Complete your first task.",                          check: ctx => ctx.totalCompleted >= 1,        progress: ctx => [ctx.totalCompleted, 1] },
+  { id: "momentum-10",  category: "Milestones",  title: "Getting Momentum",  desc: "Complete 10 tasks in total.",                        check: ctx => ctx.totalCompleted >= 10,       progress: ctx => [ctx.totalCompleted, 10] },
+  { id: "quarter-25",   category: "Milestones",  title: "Quarter Century",   desc: "Complete 25 tasks in total.",                        check: ctx => ctx.totalCompleted >= 25,       progress: ctx => [ctx.totalCompleted, 25] },
+  { id: "half-50",      category: "Milestones",  title: "Half Century",      desc: "Complete 50 tasks in total.",                        check: ctx => ctx.totalCompleted >= 50,       progress: ctx => [ctx.totalCompleted, 50] },
+  { id: "century-100",  category: "Milestones",  title: "Century",           desc: "Complete 100 tasks in total.",                       check: ctx => ctx.totalCompleted >= 100,      progress: ctx => [ctx.totalCompleted, 100] },
+  { id: "legend-250",   category: "Milestones",  title: "Task Legend",       desc: "Complete 250 tasks in total.",                       check: ctx => ctx.totalCompleted >= 250,      progress: ctx => [ctx.totalCompleted, 250] },
+  { id: "task-master",  category: "Milestones",  title: "Task Master",       desc: "Complete every task due today.",                     check: ctx => ctx.todayAllDone },
+  { id: "high-five",    category: "Milestones",  title: "High Five",         desc: "Complete 5 high-priority tasks.",                    check: ctx => ctx.highPriorityCompleted >= 5,  progress: ctx => [ctx.highPriorityCompleted, 5] },
+  { id: "priority-pro", category: "Milestones",  title: "Priority Pro",      desc: "Complete 25 high-priority tasks.",                   check: ctx => ctx.highPriorityCompleted >= 25, progress: ctx => [ctx.highPriorityCompleted, 25] },
+  { id: "well-rounded", category: "Milestones",  title: "Well Rounded",      desc: "Complete tasks in 4 different categories.",          check: ctx => ctx.distinctCategoriesCompleted >= 4, progress: ctx => [ctx.distinctCategoriesCompleted, 4] },
+  { id: "habit",        category: "Milestones",  title: "Creature of Habit", desc: "Complete 10 occurrences from a recurring series.",   check: ctx => ctx.recurringCompletedCount >= 10, progress: ctx => [ctx.recurringCompletedCount, 10] },
+  { id: "efficiency-20",category: "Milestones",  title: "Efficiency Expert", desc: "Finish 20 tasks within their estimated time.",       check: ctx => ctx.onTimeCompletedCount >= 20,  progress: ctx => [ctx.onTimeCompletedCount, 20] },
+  { id: "cat-champion", category: "Milestones",  title: "Category Champion", desc: "Complete 20 tasks in a single category.",            check: ctx => ctx.maxCategoryCount >= 20,       progress: ctx => [ctx.maxCategoryCount, 20] },
+
+  { id: "streak-3",     category: "Streaks",     title: "On a Roll",         desc: "Complete all due tasks on time, 3 days in a row.",   check: ctx => ctx.streak >= 3,                 progress: ctx => [ctx.streak, 3] },
+  { id: "streak-7",     category: "Streaks",     title: "Unstoppable",       desc: "7-day on-time completion streak.",                   check: ctx => ctx.streak >= 7,                 progress: ctx => [ctx.streak, 7] },
+  { id: "streak-14",    category: "Streaks",     title: "Two Weeks Strong",  desc: "14-day on-time completion streak.",                  check: ctx => ctx.streak >= 14,                progress: ctx => [ctx.streak, 14] },
+  { id: "streak-30",    category: "Streaks",     title: "Unbreakable",       desc: "30-day on-time completion streak.",                  check: ctx => ctx.streak >= 30,                progress: ctx => [ctx.streak, 30] },
+  { id: "perfect-week", category: "Streaks",     title: "Perfect Week",      desc: "100% on-time productivity in a single week.",        check: ctx => ctx.weeklyPerfect },
+  { id: "reliable-2wk", category: "Streaks",     title: "Reliable",          desc: "80%+ productivity two weeks in a row.",              check: ctx => ctx.reliableTwoWeeks },
+  { id: "steady-4wk",   category: "Streaks",     title: "Steady Hand",       desc: "80%+ productivity four weeks in a row.",             check: ctx => ctx.steadyFourWeeks },
+
+  { id: "focus-1",      category: "Time Tracked", title: "Focused",          desc: "Finish your first timed work session.",              check: ctx => ctx.totalSessions >= 1,          progress: ctx => [ctx.totalSessions, 1] },
+  { id: "deep-work",    category: "Time Tracked", title: "Deep Work",        desc: "Log 2+ hours of tracked time in a single day.",      check: ctx => ctx.maxDayMinutes >= 120,        progress: ctx => [ctx.maxDayMinutes, 120, true] },
+  { id: "half-day",     category: "Time Tracked", title: "Half Day Hero",    desc: "Track 4+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 240,        progress: ctx => [ctx.maxDayMinutes, 240, true] },
+  { id: "full-shift",   category: "Time Tracked", title: "Full Shift",       desc: "Track 6+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 360,        progress: ctx => [ctx.maxDayMinutes, 360, true] },
+  { id: "marathon-day", category: "Time Tracked", title: "Marathon Day",     desc: "Track 8+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 480,        progress: ctx => [ctx.maxDayMinutes, 480, true] },
+  { id: "hours-10",     category: "Time Tracked", title: "10 Hour Club",     desc: "Track 10 hours of work in total.",                   check: ctx => ctx.totalTrackedMinutes >= 600,  progress: ctx => [ctx.totalTrackedMinutes, 600, true] },
+  { id: "hours-50",     category: "Time Tracked", title: "50 Hour Club",     desc: "Track 50 hours of work in total.",                   check: ctx => ctx.totalTrackedMinutes >= 3000, progress: ctx => [ctx.totalTrackedMinutes, 3000, true] },
+  { id: "hours-100",    category: "Time Tracked", title: "100 Hour Club",    desc: "Track 100 hours of work in total.",                  check: ctx => ctx.totalTrackedMinutes >= 6000, progress: ctx => [ctx.totalTrackedMinutes, 6000, true] },
+
+  { id: "speed-runner",    category: "Fun", title: "Speed Runner",     desc: "Finish a task in under half its estimated time.",    check: ctx => ctx.speedRunner },
+  { id: "early-bird",      category: "Fun", title: "Early Bird",       desc: "Complete a task before 8am.",                        check: ctx => ctx.earlyBird },
+  { id: "night-owl",       category: "Fun", title: "Night Owl",        desc: "Complete a task after 11pm.",                        check: ctx => ctx.nightOwl },
+  { id: "weekend-warrior", category: "Fun", title: "Weekend Warrior",  desc: "Complete a task on a Saturday or Sunday.",           check: ctx => ctx.weekendWarrior },
+  { id: "multitasker",     category: "Fun", title: "Multitasker",      desc: "Track time in 3+ categories in a single day.",       check: ctx => ctx.multitaskerDay },
 ];
 
 function computeStreak() {
@@ -815,6 +820,7 @@ function checkAchievements() {
   }
   renderAchievements();
   updateCatAccessories();
+  renderNextAchievement();
 }
 
 function updateCatAccessories() {
@@ -832,44 +838,64 @@ function updateCatAccessories() {
   bow.classList.toggle("show", !hasCrown && !hasHat && hasBow);
 }
 
+function buildAchievementCard(a, ctx) {
+  const unlockedAt = unlockedAchievements[a.id];
+
+  let progressHtml = "";
+  if (!unlockedAt && a.progress) {
+    const [current, target, isMinutes] = a.progress(ctx);
+    const pct = Math.min(100, Math.round((current / target) * 100));
+    const label = isMinutes
+      ? `${(current / 60).toFixed(1)}h / ${(target / 60).toFixed(1)}h`
+      : `${Math.min(current, target)} / ${target}`;
+    progressHtml = `
+      <div class="achievement-progress">
+        <div class="achievement-progress-bar"><div class="achievement-progress-fill" style="width:${pct}%"></div></div>
+        <span class="achievement-progress-label">${label}</span>
+      </div>
+    `;
+  }
+
+  const card = document.createElement("div");
+  card.className = "achievement-card" + (unlockedAt ? "" : " locked");
+  card.innerHTML = `
+    <div class="achievement-icon"></div>
+    <div>
+      <div class="achievement-title">${escapeHtml(a.title)}</div>
+      <div class="achievement-desc">${escapeHtml(a.desc)}</div>
+      ${unlockedAt ? `<div class="achievement-date">Unlocked ${new Date(unlockedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</div>` : progressHtml}
+    </div>
+  `;
+  return card;
+}
+
 function renderAchievements() {
-  const grid = document.getElementById("achievements-grid");
-  if (!grid) return;
-  grid.innerHTML = "";
+  const container = document.getElementById("achievements-grid");
+  if (!container) return;
+  container.innerHTML = "";
 
   const ctx = computeContext();
   let unlockedCount = 0;
+  ACHIEVEMENTS.forEach(a => { if (unlockedAchievements[a.id]) unlockedCount++; });
 
-  ACHIEVEMENTS.forEach(a => {
-    const unlockedAt = unlockedAchievements[a.id];
-    if (unlockedAt) unlockedCount++;
+  ACHIEVEMENT_CATEGORIES.forEach(category => {
+    const items = ACHIEVEMENTS.filter(a => a.category === category);
+    if (items.length === 0) return;
 
-    let progressHtml = "";
-    if (!unlockedAt && a.progress) {
-      const [current, target, isMinutes] = a.progress(ctx);
-      const pct = Math.min(100, Math.round((current / target) * 100));
-      const label = isMinutes
-        ? `${(current / 60).toFixed(1)}h / ${(target / 60).toFixed(1)}h`
-        : `${Math.min(current, target)} / ${target}`;
-      progressHtml = `
-        <div class="achievement-progress">
-          <div class="achievement-progress-bar"><div class="achievement-progress-fill" style="width:${pct}%"></div></div>
-          <span class="achievement-progress-label">${label}</span>
-        </div>
-      `;
-    }
+    const unlockedInSection = items.filter(a => unlockedAchievements[a.id]).length;
 
-    const card = document.createElement("div");
-    card.className = "achievement-card" + (unlockedAt ? "" : " locked");
-    card.innerHTML = `
-      <div class="achievement-icon"></div>
-      <div>
-        <div class="achievement-title">${escapeHtml(a.title)}</div>
-        <div class="achievement-desc">${escapeHtml(a.desc)}</div>
-        ${unlockedAt ? `<div class="achievement-date">Unlocked ${new Date(unlockedAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })}</div>` : progressHtml}
+    const section = document.createElement("div");
+    section.className = "achievement-section";
+    section.innerHTML = `
+      <div class="achievement-section-heading">
+        <span>${escapeHtml(category)}</span>
+        <span class="achievement-section-count">${unlockedInSection} / ${items.length}</span>
       </div>
+      <div class="achievements-grid"></div>
     `;
-    grid.appendChild(card);
+    const grid = section.querySelector(".achievements-grid");
+    items.forEach(a => grid.appendChild(buildAchievementCard(a, ctx)));
+    container.appendChild(section);
   });
 
   const label = document.getElementById("achievements-count-label");
@@ -1189,6 +1215,37 @@ function renderPieChart(catTotals, totalMinutes) {
 }
 
 /* ===================== Render all ===================== */
+function renderNextAchievement() {
+  const card = document.getElementById("next-achievement-card");
+  if (!card) return;
+
+  const ctx = computeContext();
+  let best = null;
+  let bestPct = -1;
+
+  ACHIEVEMENTS.forEach(a => {
+    if (unlockedAchievements[a.id] || !a.progress) return;
+    const [current, target, isMinutes] = a.progress(ctx);
+    const pct = Math.min(100, (current / target) * 100);
+    if (pct > bestPct) {
+      bestPct = pct;
+      best = { a, current, target, isMinutes };
+    }
+  });
+
+  if (!best) {
+    card.style.display = "none";
+    return;
+  }
+
+  card.style.display = "flex";
+  document.getElementById("next-achievement-title").textContent = best.a.title;
+  document.getElementById("next-achievement-fill").style.width = Math.round(bestPct) + "%";
+  document.getElementById("next-achievement-count").textContent = best.isMinutes
+    ? `${(best.current / 60).toFixed(1)}h / ${(best.target / 60).toFixed(1)}h`
+    : `${Math.min(best.current, best.target)} / ${best.target}`;
+}
+
 function renderAll() {
   renderGreeting();
   renderCalendar();
@@ -1199,6 +1256,7 @@ function renderAll() {
   renderSessionList();
   renderAchievements();
   renderSummary();
+  renderNextAchievement();
 }
 
 renderAll();
