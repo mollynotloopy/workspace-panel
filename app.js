@@ -186,7 +186,7 @@ function renderStats() {
   const today = todayStr();
   const incomplete = tasks.filter(t => !t.completed);
 
-  const awaiting = incomplete.length;
+  const awaiting = incomplete.filter(t => t.dueDate === today).length;
   const highPriority = incomplete.filter(t => t.priority === "high").length;
 
   const todaysMinutes = incomplete
@@ -450,10 +450,15 @@ function openModal(taskId = null) {
   resetRecurringUI();
   document.getElementById("task-id").value = taskId || "";
   document.getElementById("delete-task-btn").style.display = taskId ? "inline-block" : "none";
-  recurringSection.style.display = taskId ? "none" : "block";
 
-  if (taskId) {
-    const t = tasks.find(x => x.id === taskId);
+  const t = taskId ? tasks.find(x => x.id === taskId) : null;
+  const isSeriesEdit = !!(t && t.recurringId);
+
+  document.getElementById("recurring-checkbox-row").style.display = isSeriesEdit ? "none" : "flex";
+  document.getElementById("series-edit-note").style.display = isSeriesEdit ? "block" : "none";
+  recurringSection.style.display = (!taskId || isSeriesEdit) ? "block" : "none";
+
+  if (t) {
     document.getElementById("modal-title").textContent = "Edit Task";
     document.getElementById("task-title").value = t.title;
     document.getElementById("task-category").value = t.category;
@@ -463,6 +468,20 @@ function openModal(taskId = null) {
     document.getElementById("task-estimate").value = t.estimate || "";
     document.getElementById("task-link").value = t.link || "";
     document.getElementById("task-notes").value = t.notes || "";
+
+    if (isSeriesEdit) {
+      recurringOptions.style.display = "flex";
+      dueDateRow.style.display = "none";
+      recurringFrequency.value = t.recurringFrequency || "weekly";
+      weekdaysField.style.display = recurringFrequency.value === "weekly" ? "block" : "none";
+      selectedWeekdays = new Set(t.recurringWeekdays || []);
+      document.querySelectorAll(".weekday-btn").forEach(b => {
+        b.classList.toggle("active", selectedWeekdays.has(b.dataset.day));
+      });
+      document.getElementById("recurring-start").value = t.recurringStart || t.dueDate || "";
+      document.getElementById("recurring-until").value = t.recurringUntil || "";
+      document.getElementById("recurring-time").value = t.recurringTime || t.dueTime || "";
+    }
   } else {
     document.getElementById("modal-title").textContent = "New Task";
     if (selectedDate) document.getElementById("task-due-date").value = selectedDate;
@@ -522,6 +541,34 @@ function showRecurringError(message) {
   recurringError.style.display = "block";
 }
 
+function readRecurrenceForm() {
+  const frequency = recurringFrequency.value;
+  const start = document.getElementById("recurring-start").value;
+  const until = document.getElementById("recurring-until").value;
+  const time = document.getElementById("recurring-time").value;
+
+  if (!start || !until) {
+    showRecurringError("Please set both a start and until date.");
+    return null;
+  }
+  if (until < start) {
+    showRecurringError("Until date must be on or after the start date.");
+    return null;
+  }
+  if (frequency === "weekly" && selectedWeekdays.size === 0) {
+    showRecurringError("Pick at least one day of the week.");
+    return null;
+  }
+
+  const dates = generateRecurringDates(start, until, frequency, selectedWeekdays);
+  if (dates.length === 0) {
+    showRecurringError("No occurrences found in that date range.");
+    return null;
+  }
+
+  return { frequency, start, until, time, dates };
+}
+
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const id = document.getElementById("task-id").value;
@@ -538,45 +585,60 @@ form.addEventListener("submit", (e) => {
 
   if (!baseData.title) return;
 
-  const isRecurring = !id && recurringCheckbox.checked;
+  const existingTask = id ? tasks.find(x => x.id === id) : null;
+  const isSeriesEdit = !!(existingTask && existingTask.recurringId);
+  const isNewRecurring = !id && recurringCheckbox.checked;
 
-  if (isRecurring) {
-    const frequency = recurringFrequency.value;
-    const start = document.getElementById("recurring-start").value;
-    const until = document.getElementById("recurring-until").value;
-    const time = document.getElementById("recurring-time").value;
+  if (isNewRecurring || isSeriesEdit) {
+    const rec = readRecurrenceForm();
+    if (!rec) return;
 
-    if (!start || !until) {
-      showRecurringError("Please set both a start and until date.");
-      return;
-    }
-    if (until < start) {
-      showRecurringError("Until date must be on or after the start date.");
-      return;
-    }
-    if (frequency === "weekly" && selectedWeekdays.size === 0) {
-      showRecurringError("Pick at least one day of the week.");
-      return;
-    }
+    const recurringId = isSeriesEdit ? existingTask.recurringId : uid();
+    const recurringMeta = {
+      recurringId,
+      recurringFrequency: rec.frequency,
+      recurringWeekdays: rec.frequency === "weekly" ? Array.from(selectedWeekdays) : [],
+      recurringStart: rec.start,
+      recurringUntil: rec.until,
+      recurringTime: rec.time,
+    };
 
-    const dates = generateRecurringDates(start, until, frequency, selectedWeekdays);
-    if (dates.length === 0) {
-      showRecurringError("No occurrences found in that date range.");
-      return;
-    }
+    if (isSeriesEdit) {
+      const existingByDate = {};
+      tasks.filter(t => t.recurringId === recurringId).forEach(t => { existingByDate[t.dueDate] = t; });
 
-    const recurringId = uid();
-    dates.forEach(dateStr => {
-      tasks.push({
-        id: uid(),
-        completed: false,
-        completedOn: null,
-        dueDate: dateStr,
-        dueTime: time,
-        recurringId,
-        ...baseData,
+      const seriesTasks = rec.dates.map(dateStr => {
+        const prior = existingByDate[dateStr];
+        if (prior) {
+          Object.assign(prior, baseData, recurringMeta, { dueDate: dateStr, dueTime: rec.time });
+          return prior;
+        }
+        return {
+          id: uid(),
+          completed: false,
+          completedOn: null,
+          dueDate: dateStr,
+          dueTime: rec.time,
+          ...recurringMeta,
+          ...baseData,
+        };
       });
-    });
+
+      tasks = tasks.filter(t => t.recurringId !== recurringId);
+      tasks.push(...seriesTasks);
+    } else {
+      rec.dates.forEach(dateStr => {
+        tasks.push({
+          id: uid(),
+          completed: false,
+          completedOn: null,
+          dueDate: dateStr,
+          dueTime: rec.time,
+          ...recurringMeta,
+          ...baseData,
+        });
+      });
+    }
   } else {
     const data = {
       ...baseData,
@@ -585,8 +647,7 @@ form.addEventListener("submit", (e) => {
     };
 
     if (id) {
-      const t = tasks.find(x => x.id === id);
-      Object.assign(t, data);
+      Object.assign(existingTask, data);
     } else {
       tasks.push({
         id: uid(),

@@ -478,6 +478,16 @@ select {
   font-weight: 600;
 }
 
+.series-note {
+  color: var(--accent);
+  background: var(--accent-soft);
+  border: 2px solid var(--accent);
+  padding: 8px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0 0 12px;
+}
+
 /* ===== Timer / Pomodoro ===== */
 .pomodoro-layout {
   display: grid;

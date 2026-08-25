@@ -34,7 +34,7 @@
     <!-- Stats -->
     <section class="stats-grid">
       <div class="card stat-card">
-        <span class="stat-label">Tasks Awaiting</span>
+        <span class="stat-label">Awaiting Today</span>
         <span class="stat-value" id="stat-awaiting">0</span>
       </div>
       <div class="card stat-card">
@@ -229,7 +229,8 @@
       </div>
 
       <div id="recurring-section">
-        <label class="field checkbox-field">
+        <p class="series-note" id="series-edit-note" style="display:none;">Editing this series — changes apply to every occurrence.</p>
+        <label class="field checkbox-field" id="recurring-checkbox-row">
           <input type="checkbox" id="task-recurring" />
           <span>Recurring task</span>
         </label>
