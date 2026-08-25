@@ -463,10 +463,14 @@ function openModal(taskId = null) {
   form.reset();
   resetRecurringUI();
   document.getElementById("task-id").value = taskId || "";
-  document.getElementById("delete-task-btn").style.display = taskId ? "inline-block" : "none";
 
   const t = taskId ? tasks.find(x => x.id === taskId) : null;
   const isSeriesEdit = !!(t && t.recurringId);
+
+  const deleteBtn = document.getElementById("delete-task-btn");
+  deleteBtn.style.display = taskId ? "inline-block" : "none";
+  deleteBtn.textContent = isSeriesEdit ? "Delete This Occurrence" : "Delete";
+  document.getElementById("delete-series-btn").style.display = isSeriesEdit ? "inline-block" : "none";
 
   document.getElementById("recurring-checkbox-row").style.display = isSeriesEdit ? "none" : "flex";
   document.getElementById("series-edit-note").style.display = isSeriesEdit ? "block" : "none";
@@ -517,6 +521,16 @@ document.getElementById("delete-task-btn").addEventListener("click", () => {
   const id = document.getElementById("task-id").value;
   if (!id) return;
   tasks = tasks.filter(t => t.id !== id);
+  saveTasks();
+  closeModal();
+  renderAll();
+});
+
+document.getElementById("delete-series-btn").addEventListener("click", () => {
+  const id = document.getElementById("task-id").value;
+  const t = tasks.find(x => x.id === id);
+  if (!t || !t.recurringId) return;
+  tasks = tasks.filter(x => x.recurringId !== t.recurringId);
   saveTasks();
   closeModal();
   renderAll();

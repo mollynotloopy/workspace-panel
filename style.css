@@ -421,7 +421,7 @@ select {
 }
 .field textarea { resize: vertical; }
 
-.modal-actions { display: flex; align-items: center; margin-top: 8px; gap: 10px; }
+.modal-actions { display: flex; align-items: center; margin-top: 8px; gap: 10px; flex-wrap: wrap; }
 .spacer { flex: 1; }
 
 /* ===== Recurring task ===== */
