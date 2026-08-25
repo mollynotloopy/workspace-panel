@@ -187,7 +187,7 @@ function renderStats() {
   const incomplete = tasks.filter(t => !t.completed);
 
   const awaiting = incomplete.filter(t => t.dueDate === today).length;
-  const highPriority = incomplete.filter(t => t.priority === "high").length;
+  const highPriority = incomplete.filter(t => t.priority === "high" && t.dueDate === today).length;
 
   const todaysMinutes = incomplete
     .filter(t => t.dueDate === today)
