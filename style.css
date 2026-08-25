@@ -424,6 +424,60 @@ select {
 .modal-actions { display: flex; align-items: center; margin-top: 8px; gap: 10px; }
 .spacer { flex: 1; }
 
+/* ===== Recurring task ===== */
+.checkbox-field { flex-direction: row; align-items: center; gap: 8px; margin-bottom: 12px; }
+.checkbox-field input[type="checkbox"] {
+  width: 17px;
+  height: 17px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+.checkbox-field span { font-size: 13.5px; color: var(--text-main); font-weight: 600; text-transform: none; letter-spacing: 0; }
+
+.recurring-options {
+  border: 2px solid var(--outline);
+  background: var(--bg-panel-alt);
+  padding: 14px;
+  margin-bottom: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.recurring-options .field:last-of-type { margin-bottom: 0; }
+
+.weekday-picker { display: flex; gap: 6px; }
+.weekday-btn {
+  width: 32px;
+  height: 32px;
+  border: 2px solid var(--outline);
+  background: var(--bg-input);
+  color: var(--text-sub);
+  font-family: 'Pixelify Sans', sans-serif;
+  font-weight: 600;
+  font-size: 13px;
+  cursor: pointer;
+}
+.weekday-btn.active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--outline-strong);
+}
+
+.field-error {
+  color: #a34e4e;
+  background: #fbeaea;
+  border: 2px solid var(--pri-high);
+  padding: 7px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  margin: 0;
+}
+
+.recurring-badge {
+  color: var(--accent);
+  font-weight: 600;
+}
+
 /* ===== Timer / Pomodoro ===== */
 .pomodoro-layout {
   display: grid;

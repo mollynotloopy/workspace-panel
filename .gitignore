@@ -1,3 +1,4 @@
 artifact-build.html
 Screenshot*.png
 .DS_Store
+.claude/scheduled_tasks.lock

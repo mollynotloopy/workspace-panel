@@ -334,6 +334,7 @@ function renderTaskItem(t) {
   item.style.borderLeftColor = pMeta.color;
 
   const metaParts = [];
+  if (t.recurringId) metaParts.push(`<span class="recurring-badge">↻ Recurring</span>`);
   if (t.link) metaParts.push(`<a href="${escapeAttr(t.link)}" target="_blank" rel="noopener">Link</a>`);
 
   const sideParts = [];
@@ -398,10 +399,58 @@ document.getElementById("category-filter").addEventListener("change", renderTask
 const overlay = document.getElementById("modal-overlay");
 const form = document.getElementById("task-form");
 
+const recurringCheckbox = document.getElementById("task-recurring");
+const recurringOptions = document.getElementById("recurring-options");
+const recurringSection = document.getElementById("recurring-section");
+const dueDateRow = document.getElementById("due-date-row");
+const recurringFrequency = document.getElementById("recurring-frequency");
+const weekdaysField = document.getElementById("recurring-weekdays-field");
+const recurringError = document.getElementById("recurring-error");
+let selectedWeekdays = new Set();
+
+recurringCheckbox.addEventListener("change", () => {
+  const on = recurringCheckbox.checked;
+  recurringOptions.style.display = on ? "flex" : "none";
+  dueDateRow.style.display = on ? "none" : "grid";
+});
+
+recurringFrequency.addEventListener("change", () => {
+  weekdaysField.style.display = recurringFrequency.value === "weekly" ? "block" : "none";
+});
+
+document.querySelectorAll(".weekday-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const day = btn.dataset.day;
+    if (selectedWeekdays.has(day)) {
+      selectedWeekdays.delete(day);
+      btn.classList.remove("active");
+    } else {
+      selectedWeekdays.add(day);
+      btn.classList.add("active");
+    }
+  });
+});
+
+function resetRecurringUI() {
+  recurringCheckbox.checked = false;
+  recurringOptions.style.display = "none";
+  dueDateRow.style.display = "grid";
+  recurringFrequency.value = "weekly";
+  weekdaysField.style.display = "block";
+  selectedWeekdays.clear();
+  document.querySelectorAll(".weekday-btn").forEach(b => b.classList.remove("active"));
+  document.getElementById("recurring-start").value = selectedDate || todayStr();
+  document.getElementById("recurring-until").value = "";
+  document.getElementById("recurring-time").value = "";
+  recurringError.style.display = "none";
+}
+
 function openModal(taskId = null) {
   form.reset();
+  resetRecurringUI();
   document.getElementById("task-id").value = taskId || "";
   document.getElementById("delete-task-btn").style.display = taskId ? "inline-block" : "none";
+  recurringSection.style.display = taskId ? "none" : "block";
 
   if (taskId) {
     const t = tasks.find(x => x.id === taskId);
@@ -440,33 +489,112 @@ document.getElementById("delete-task-btn").addEventListener("click", () => {
   renderAll();
 });
 
+function generateRecurringDates(startStr, untilStr, frequency, weekdaySet) {
+  const MAX_OCCURRENCES = 300;
+  const dates = [];
+  const start = new Date(startStr + "T00:00:00");
+  const until = new Date(untilStr + "T00:00:00");
+
+  if (frequency === "weekly") {
+    const days = new Set(Array.from(weekdaySet).map(Number));
+    const cursor = new Date(start);
+    while (cursor <= until && dates.length < MAX_OCCURRENCES) {
+      if (days.has(cursor.getDay())) dates.push(formatDate(cursor));
+      cursor.setDate(cursor.getDate() + 1);
+    }
+  } else {
+    const dayOfMonth = start.getDate();
+    let cursor = new Date(start);
+    while (cursor <= until && dates.length < MAX_OCCURRENCES) {
+      dates.push(formatDate(cursor));
+      const nextMonthIndex = cursor.getMonth() + 1;
+      const nextYear = cursor.getFullYear() + Math.floor(nextMonthIndex / 12);
+      const nextMonth = nextMonthIndex % 12;
+      const daysInNextMonth = new Date(nextYear, nextMonth + 1, 0).getDate();
+      cursor = new Date(nextYear, nextMonth, Math.min(dayOfMonth, daysInNextMonth));
+    }
+  }
+  return dates;
+}
+
+function showRecurringError(message) {
+  recurringError.textContent = message;
+  recurringError.style.display = "block";
+}
+
 form.addEventListener("submit", (e) => {
   e.preventDefault();
   const id = document.getElementById("task-id").value;
+  recurringError.style.display = "none";
 
-  const data = {
+  const baseData = {
     title: document.getElementById("task-title").value.trim(),
     category: document.getElementById("task-category").value,
     priority: document.getElementById("task-priority").value,
-    dueDate: document.getElementById("task-due-date").value,
-    dueTime: document.getElementById("task-due-time").value,
     estimate: document.getElementById("task-estimate").value,
     link: document.getElementById("task-link").value.trim(),
     notes: document.getElementById("task-notes").value.trim(),
   };
 
-  if (!data.title) return;
+  if (!baseData.title) return;
 
-  if (id) {
-    const t = tasks.find(x => x.id === id);
-    Object.assign(t, data);
-  } else {
-    tasks.push({
-      id: uid(),
-      completed: false,
-      completedOn: null,
-      ...data,
+  const isRecurring = !id && recurringCheckbox.checked;
+
+  if (isRecurring) {
+    const frequency = recurringFrequency.value;
+    const start = document.getElementById("recurring-start").value;
+    const until = document.getElementById("recurring-until").value;
+    const time = document.getElementById("recurring-time").value;
+
+    if (!start || !until) {
+      showRecurringError("Please set both a start and until date.");
+      return;
+    }
+    if (until < start) {
+      showRecurringError("Until date must be on or after the start date.");
+      return;
+    }
+    if (frequency === "weekly" && selectedWeekdays.size === 0) {
+      showRecurringError("Pick at least one day of the week.");
+      return;
+    }
+
+    const dates = generateRecurringDates(start, until, frequency, selectedWeekdays);
+    if (dates.length === 0) {
+      showRecurringError("No occurrences found in that date range.");
+      return;
+    }
+
+    const recurringId = uid();
+    dates.forEach(dateStr => {
+      tasks.push({
+        id: uid(),
+        completed: false,
+        completedOn: null,
+        dueDate: dateStr,
+        dueTime: time,
+        recurringId,
+        ...baseData,
+      });
     });
+  } else {
+    const data = {
+      ...baseData,
+      dueDate: document.getElementById("task-due-date").value,
+      dueTime: document.getElementById("task-due-time").value,
+    };
+
+    if (id) {
+      const t = tasks.find(x => x.id === id);
+      Object.assign(t, data);
+    } else {
+      tasks.push({
+        id: uid(),
+        completed: false,
+        completedOn: null,
+        ...data,
+      });
+    }
   }
 
   saveTasks();
