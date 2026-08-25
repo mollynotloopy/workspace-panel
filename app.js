@@ -271,6 +271,14 @@ newCategoryInput.addEventListener("keydown", (e) => {
   }
 });
 
+let showCompletedAll = false;
+
+document.getElementById("toggle-completed-btn").addEventListener("click", () => {
+  showCompletedAll = !showCompletedAll;
+  document.getElementById("toggle-completed-btn").textContent = showCompletedAll ? "Hide Old Completed" : "Show Completed";
+  renderTasks();
+});
+
 function renderTasks() {
   const container = document.getElementById("tasks-categories");
   const filterCat = document.getElementById("category-filter").value;
@@ -281,7 +289,12 @@ function renderTasks() {
     : "All Tasks";
 
   let visible = tasks.slice();
-  if (selectedDate) visible = visible.filter(t => t.dueDate === selectedDate);
+  if (selectedDate) {
+    visible = visible.filter(t => t.dueDate === selectedDate);
+  } else if (!showCompletedAll) {
+    const today = todayStr();
+    visible = visible.filter(t => !t.completed || t.completedOn === today);
+  }
   if (filterCat !== "all") visible = visible.filter(t => t.category === filterCat);
 
   container.innerHTML = "";
@@ -388,6 +401,7 @@ function toggleComplete(id) {
   if (!t) return;
   t.completed = !t.completed;
   t.completedOn = t.completed ? todayStr() : null;
+  t.completedAt = t.completed ? new Date().toISOString() : null;
   saveTasks();
   renderAll();
   checkAchievements();
@@ -665,14 +679,29 @@ form.addEventListener("submit", (e) => {
 
 /* ===================== Achievements ===================== */
 const ACHIEVEMENTS = [
-  { id: "first-task",  title: "First Steps",   desc: "Complete your first task.",                        check: ctx => ctx.totalCompleted >= 1 },
-  { id: "task-master", title: "Task Master",   desc: "Complete every task due today.",                    check: ctx => ctx.todayAllDone },
-  { id: "streak-3",    title: "On a Roll",     desc: "Complete all due tasks on time, 3 days in a row.",  check: ctx => ctx.streak >= 3 },
-  { id: "streak-7",    title: "Unstoppable",   desc: "7-day on-time completion streak.",                  check: ctx => ctx.streak >= 7 },
-  { id: "focus-1",     title: "Focused",       desc: "Finish your first timed work session.",             check: ctx => ctx.totalSessions >= 1 },
-  { id: "deep-work",   title: "Deep Work",     desc: "Log 2+ hours of tracked time in a single day.",     check: ctx => ctx.maxDayMinutes >= 120 },
-  { id: "high-five",   title: "High Five",     desc: "Complete 5 high-priority tasks.",                   check: ctx => ctx.highPriorityCompleted >= 5 },
-  { id: "century",     title: "Century",       desc: "Complete 10 tasks in total.",                       check: ctx => ctx.totalCompleted >= 10 },
+  { id: "first-task",   title: "First Steps",       desc: "Complete your first task.",                          check: ctx => ctx.totalCompleted >= 1 },
+  { id: "momentum-10",  title: "Getting Momentum",  desc: "Complete 10 tasks in total.",                        check: ctx => ctx.totalCompleted >= 10 },
+  { id: "quarter-25",   title: "Quarter Century",   desc: "Complete 25 tasks in total.",                        check: ctx => ctx.totalCompleted >= 25 },
+  { id: "half-50",      title: "Half Century",      desc: "Complete 50 tasks in total.",                        check: ctx => ctx.totalCompleted >= 50 },
+  { id: "century-100",  title: "Century",           desc: "Complete 100 tasks in total.",                       check: ctx => ctx.totalCompleted >= 100 },
+  { id: "legend-250",   title: "Task Legend",       desc: "Complete 250 tasks in total.",                       check: ctx => ctx.totalCompleted >= 250 },
+  { id: "task-master",  title: "Task Master",       desc: "Complete every task due today.",                     check: ctx => ctx.todayAllDone },
+  { id: "streak-3",     title: "On a Roll",         desc: "Complete all due tasks on time, 3 days in a row.",   check: ctx => ctx.streak >= 3 },
+  { id: "streak-7",     title: "Unstoppable",       desc: "7-day on-time completion streak.",                   check: ctx => ctx.streak >= 7 },
+  { id: "streak-14",    title: "Two Weeks Strong",  desc: "14-day on-time completion streak.",                  check: ctx => ctx.streak >= 14 },
+  { id: "streak-30",    title: "Unbreakable",       desc: "30-day on-time completion streak.",                  check: ctx => ctx.streak >= 30 },
+  { id: "focus-1",      title: "Focused",           desc: "Finish your first timed work session.",              check: ctx => ctx.totalSessions >= 1 },
+  { id: "deep-work",    title: "Deep Work",         desc: "Log 2+ hours of tracked time in a single day.",      check: ctx => ctx.maxDayMinutes >= 120 },
+  { id: "hours-10",     title: "10 Hour Club",      desc: "Track 10 hours of work in total.",                   check: ctx => ctx.totalTrackedMinutes >= 600 },
+  { id: "hours-50",     title: "50 Hour Club",      desc: "Track 50 hours of work in total.",                   check: ctx => ctx.totalTrackedMinutes >= 3000 },
+  { id: "hours-100",    title: "100 Hour Club",     desc: "Track 100 hours of work in total.",                  check: ctx => ctx.totalTrackedMinutes >= 6000 },
+  { id: "high-five",    title: "High Five",         desc: "Complete 5 high-priority tasks.",                    check: ctx => ctx.highPriorityCompleted >= 5 },
+  { id: "priority-pro", title: "Priority Pro",      desc: "Complete 25 high-priority tasks.",                   check: ctx => ctx.highPriorityCompleted >= 25 },
+  { id: "well-rounded", title: "Well Rounded",      desc: "Complete tasks in 4 different categories.",          check: ctx => ctx.distinctCategoriesCompleted >= 4 },
+  { id: "habit",        title: "Creature of Habit", desc: "Complete 10 occurrences from a recurring series.",   check: ctx => ctx.recurringCompletedCount >= 10 },
+  { id: "early-bird",   title: "Early Bird",        desc: "Complete a task before 8am.",                        check: ctx => ctx.earlyBird },
+  { id: "night-owl",    title: "Night Owl",         desc: "Complete a task after 11pm.",                        check: ctx => ctx.nightOwl },
+  { id: "perfect-week", title: "Perfect Week",      desc: "100% on-time productivity in a single week.",        check: ctx => ctx.weeklyPerfect },
 ];
 
 function computeStreak() {
@@ -701,7 +730,18 @@ function computeContext() {
   const dayTotals = {};
   sessions.forEach(s => { dayTotals[s.date] = (dayTotals[s.date] || 0) + (Number(s.minutes) || 0); });
   const maxDayMinutes = Math.max(0, ...Object.values(dayTotals));
-  return { totalCompleted, highPriorityCompleted, todayAllDone, streak, totalSessions, maxDayMinutes };
+  const totalTrackedMinutes = sessions.reduce((sum, s) => sum + (Number(s.minutes) || 0), 0);
+  const distinctCategoriesCompleted = new Set(tasks.filter(t => t.completed).map(t => t.category)).size;
+  const recurringCompletedCount = tasks.filter(t => t.completed && t.recurringId).length;
+  const earlyBird = tasks.some(t => t.completed && t.completedAt && new Date(t.completedAt).getHours() < 8);
+  const nightOwl = tasks.some(t => t.completed && t.completedAt && new Date(t.completedAt).getHours() >= 23);
+  const thisWeek = computeWeekStats(0);
+  const weeklyPerfect = thisWeek.productivityPct === 100 && thisWeek.trackedCompletedCount >= 3;
+
+  return {
+    totalCompleted, highPriorityCompleted, todayAllDone, streak, totalSessions, maxDayMinutes,
+    totalTrackedMinutes, distinctCategoriesCompleted, recurringCompletedCount, earlyBird, nightOwl, weeklyPerfect,
+  };
 }
 
 function checkAchievements() {
@@ -917,6 +957,7 @@ document.getElementById("timer-complete").addEventListener("click", () => {
 
   task.completed = true;
   task.completedOn = todayStr();
+  task.completedAt = new Date().toISOString();
   saveTasks();
 
   timerSeconds = 0;
