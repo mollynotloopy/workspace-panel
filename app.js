@@ -814,6 +814,22 @@ function checkAchievements() {
     newlyUnlocked.forEach(a => showToast(a));
   }
   renderAchievements();
+  updateCatAccessories();
+}
+
+function updateCatAccessories() {
+  const bow = document.querySelector(".cat-bow");
+  const hat = document.querySelector(".cat-partyhat");
+  const crown = document.querySelector(".cat-crown");
+  if (!bow || !hat || !crown) return;
+
+  const hasCrown = !!unlockedAchievements["century-100"];
+  const hasHat = !!unlockedAchievements["quarter-25"];
+  const hasBow = !!unlockedAchievements["momentum-10"];
+
+  crown.classList.toggle("show", hasCrown);
+  hat.classList.toggle("show", !hasCrown && hasHat);
+  bow.classList.toggle("show", !hasCrown && !hasHat && hasBow);
 }
 
 function renderAchievements() {
@@ -876,6 +892,8 @@ function showToast(achievement) {
     toast.classList.add("fade-out");
     setTimeout(() => toast.remove(), 300);
   }, 4000);
+
+  triggerCatCelebrate();
 }
 
 /* ===================== Timer ===================== */
@@ -1185,6 +1203,28 @@ function renderAll() {
 renderAll();
 checkAchievements();
 initCatDrag();
+updateCatAccessories();
+
+/* ===================== Cat reactions ===================== */
+function triggerCatReaction() {
+  const img = document.getElementById("cat-img");
+  const heart = document.getElementById("cat-heart");
+  if (!img || !heart) return;
+  img.classList.remove("squish");
+  void img.offsetWidth;
+  img.classList.add("squish");
+  heart.classList.remove("pop");
+  void heart.offsetWidth;
+  heart.classList.add("pop");
+}
+
+function triggerCatCelebrate() {
+  const img = document.getElementById("cat-img");
+  if (!img) return;
+  img.classList.remove("celebrate");
+  void img.offsetWidth;
+  img.classList.add("celebrate");
+}
 
 /* ===================== Draggable cat mascot ===================== */
 function initCatDrag() {
@@ -1203,11 +1243,17 @@ function initCatDrag() {
   }
 
   let dragging = false;
+  let moved = false;
   let offsetX = 0;
   let offsetY = 0;
+  let startX = 0;
+  let startY = 0;
 
   cat.addEventListener("pointerdown", (e) => {
     dragging = true;
+    moved = false;
+    startX = e.clientX;
+    startY = e.clientY;
     cat.classList.add("dragging");
     cat.setPointerCapture(e.pointerId);
     const rect = cat.getBoundingClientRect();
@@ -1217,6 +1263,7 @@ function initCatDrag() {
 
   cat.addEventListener("pointermove", (e) => {
     if (!dragging) return;
+    if (Math.abs(e.clientX - startX) > 4 || Math.abs(e.clientY - startY) > 4) moved = true;
     let newLeft = e.clientX - offsetX;
     let newTop = e.clientY - offsetY;
     newLeft = Math.max(0, Math.min(window.innerWidth - cat.offsetWidth, newLeft));
@@ -1233,6 +1280,7 @@ function initCatDrag() {
       left: parseFloat(cat.style.left),
       top: parseFloat(cat.style.top),
     }));
+    if (!moved) triggerCatReaction();
   }
 
   cat.addEventListener("pointerup", endDrag);
