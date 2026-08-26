@@ -52,6 +52,7 @@ html, body {
 *::-webkit-scrollbar-corner { background: var(--bg-panel-alt); }
 
 h1, h2 { font-family: 'Pixelify Sans', sans-serif; margin: 0; }
+h1 { text-shadow: 2px 2px 0 var(--shadow-soft); }
 
 .app {
   max-width: 1100px;
@@ -792,9 +793,8 @@ select {
 .pie-chart {
   width: 150px;
   height: 150px;
+  border-radius: 50%;
   border: 3px solid var(--outline-strong);
-  clip-path: polygon(30% 0%, 70% 0%, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0% 70%, 0% 30%);
-  filter: drop-shadow(3px 3px 0 var(--shadow-soft));
   flex-shrink: 0;
 }
 .pie-legend { display: flex; flex-direction: column; gap: 8px; flex: 1; min-width: 140px; }
