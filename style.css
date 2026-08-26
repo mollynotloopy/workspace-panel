@@ -27,11 +27,14 @@
   --pri-medium: #e0b46a;
   --pri-low: #8bbf8a;
   --pri-timesensitive: #8a97d9;
+
+  --on-scene-text: var(--text-main);
 }
 
 /* ===== Time-of-day themes ===== */
 html[data-time-theme="afternoon"] {
   --bg-page: #8a6f8f;
+  --on-scene-text: #fdf6ea;
 }
 html[data-time-theme="night"] {
   --bg-page: #241a3d;
@@ -49,6 +52,7 @@ html[data-time-theme="night"] {
   --gold: #f0c674;
 
   --shadow-soft: rgba(0, 0, 0, 0.4);
+  --on-scene-text: #f3ecff;
 }
 
 * { box-sizing: border-box; }
@@ -57,6 +61,7 @@ html, body {
   margin: 0;
   padding: 0;
   min-height: 100vh;
+  position: relative;
   font-family: 'Pixelify Sans', sans-serif;
   color: var(--text-main);
   background: var(--bg-page);
@@ -69,13 +74,19 @@ html, body {
   position: absolute;
   top: 0;
   left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 0;
+  background: var(--bg-page);
+  pointer-events: none;
+}
+
+.scene-hero {
+  position: relative;
   width: 100%;
   height: 100vh;
   min-height: 500px;
-  z-index: 0;
-  background: var(--bg-page);
   overflow: hidden;
-  pointer-events: none;
 }
 
 .scene-mountains, .scene-glow, .scene-cloud { display: none; }
@@ -101,9 +112,22 @@ html[data-time-theme="afternoon"] .scene-stars { display: block; opacity: 0.6; }
     16px 8px 0 rgba(255, 255, 255, 0.85),
     32px 8px 0 rgba(255, 255, 255, 0.85);
 }
-.scene-cloud-1 { top: 10%; left: 8%; transform: scale(1.4); }
-.scene-cloud-2 { top: 20%; right: 12%; transform: scale(1.1); opacity: 0.8; }
-.scene-cloud-3 { top: 32%; left: 42%; transform: scale(0.9); opacity: 0.7; }
+.scene-cloud-1 { top: 10%; left: 8%; animation: cloud-drift-1 16s ease-in-out infinite; }
+.scene-cloud-2 { top: 20%; right: 12%; opacity: 0.8; animation: cloud-drift-2 20s ease-in-out infinite; }
+.scene-cloud-3 { top: 32%; left: 42%; opacity: 0.7; animation: cloud-drift-3 24s ease-in-out infinite; }
+
+@keyframes cloud-drift-1 {
+  0%, 100% { transform: scale(1.4) translateX(0); }
+  50% { transform: scale(1.4) translateX(26px); }
+}
+@keyframes cloud-drift-2 {
+  0%, 100% { transform: scale(1.1) translateX(0); }
+  50% { transform: scale(1.1) translateX(-22px); }
+}
+@keyframes cloud-drift-3 {
+  0%, 100% { transform: scale(0.9) translateX(0); }
+  50% { transform: scale(0.9) translateX(18px); }
+}
 
 html[data-time-theme="night"] .scene-bg {
   background: linear-gradient(180deg, #0c0a1a 0%, #241a3d 30%, #5c2b52 60%, #c9622e 100%);
@@ -223,14 +247,15 @@ h1 { text-shadow: 2px 2px 0 var(--shadow-soft); }
   text-transform: uppercase;
   letter-spacing: 1.5px;
   font-size: 12px;
-  color: var(--text-sub);
+  color: var(--on-scene-text);
   margin: 0 0 6px;
   font-weight: 600;
+  opacity: 0.75;
 }
 .greeting h1 {
   font-size: 28px;
   font-weight: 700;
-  color: var(--text-main);
+  color: var(--on-scene-text);
 }
 .wave { display: inline-block; }
 
@@ -390,7 +415,7 @@ h1 { text-shadow: 2px 2px 0 var(--shadow-soft); }
   gap: 12px;
   margin-bottom: 16px;
 }
-.tasks-header h2 { font-size: 19px; font-weight: 700; color: var(--text-main); }
+.tasks-header h2 { font-size: 19px; font-weight: 700; color: var(--on-scene-text); }
 .tasks-controls { display: flex; gap: 10px; align-items: center; }
 
 select {
