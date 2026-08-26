@@ -809,10 +809,10 @@ const ACHIEVEMENTS = [
   { id: "steady-4wk",   category: "Streaks",     title: "Steady Hand",       desc: "80%+ productivity four weeks in a row.",             check: ctx => ctx.steadyFourWeeks },
 
   { id: "focus-1",      category: "Time Tracked", title: "Focused",          desc: "Finish your first timed work session.",              check: ctx => ctx.totalSessions >= 1,          progress: ctx => [ctx.totalSessions, 1] },
-  { id: "deep-work",    category: "Time Tracked", title: "Deep Work",        desc: "Log 2+ hours of tracked time in a single day.",      check: ctx => ctx.maxDayMinutes >= 120,        progress: ctx => [ctx.maxDayMinutes, 120, true] },
-  { id: "half-day",     category: "Time Tracked", title: "Half Day Hero",    desc: "Track 4+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 240,        progress: ctx => [ctx.maxDayMinutes, 240, true] },
-  { id: "full-shift",   category: "Time Tracked", title: "Full Shift",       desc: "Track 6+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 360,        progress: ctx => [ctx.maxDayMinutes, 360, true] },
-  { id: "marathon-day", category: "Time Tracked", title: "Marathon Day",     desc: "Track 8+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 480,        progress: ctx => [ctx.maxDayMinutes, 480, true] },
+  { id: "deep-work",    category: "Time Tracked", title: "Deep Work",        desc: "Log 2+ hours of tracked time in a single day.",      check: ctx => ctx.maxDayMinutes >= 120,        progress: ctx => [ctx.todayTrackedMinutes, 120, true] },
+  { id: "half-day",     category: "Time Tracked", title: "Half Day Hero",    desc: "Track 4+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 240,        progress: ctx => [ctx.todayTrackedMinutes, 240, true] },
+  { id: "full-shift",   category: "Time Tracked", title: "Full Shift",       desc: "Track 6+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 360,        progress: ctx => [ctx.todayTrackedMinutes, 360, true] },
+  { id: "marathon-day", category: "Time Tracked", title: "Marathon Day",     desc: "Track 8+ hours of work in a single day.",            check: ctx => ctx.maxDayMinutes >= 480,        progress: ctx => [ctx.todayTrackedMinutes, 480, true] },
   { id: "hours-10",     category: "Time Tracked", title: "10 Hour Club",     desc: "Track 10 hours of work in total.",                   check: ctx => ctx.totalTrackedMinutes >= 600,  progress: ctx => [ctx.totalTrackedMinutes, 600, true] },
   { id: "hours-50",     category: "Time Tracked", title: "50 Hour Club",     desc: "Track 50 hours of work in total.",                   check: ctx => ctx.totalTrackedMinutes >= 3000, progress: ctx => [ctx.totalTrackedMinutes, 3000, true] },
   { id: "hours-100",    category: "Time Tracked", title: "100 Hour Club",    desc: "Track 100 hours of work in total.",                  check: ctx => ctx.totalTrackedMinutes >= 6000, progress: ctx => [ctx.totalTrackedMinutes, 6000, true] },
@@ -850,6 +850,7 @@ function computeContext() {
   const dayTotals = {};
   sessions.forEach(s => { dayTotals[s.date] = (dayTotals[s.date] || 0) + (Number(s.minutes) || 0); });
   const maxDayMinutes = Math.max(0, ...Object.values(dayTotals));
+  const todayTrackedMinutes = dayTotals[today] || 0;
   const totalTrackedMinutes = sessions.reduce((sum, s) => sum + (Number(s.minutes) || 0), 0);
   const distinctCategoriesCompleted = new Set(tasks.filter(t => t.completed).map(t => t.category)).size;
   const recurringCompletedCount = tasks.filter(t => t.completed && t.recurringId).length;
@@ -891,7 +892,7 @@ function computeContext() {
   const onTimeByDueDateCount = tasks.filter(t => t.completed && t.dueDate && t.completedOn && t.completedOn <= t.dueDate).length;
 
   return {
-    totalCompleted, highPriorityCompleted, todayAllDone, streak, totalSessions, maxDayMinutes,
+    totalCompleted, highPriorityCompleted, todayAllDone, streak, totalSessions, maxDayMinutes, todayTrackedMinutes,
     totalTrackedMinutes, distinctCategoriesCompleted, recurringCompletedCount, earlyBird, nightOwl, weeklyPerfect,
     onTimeCompletedCount, speedRunner, maxCategoryCount, weekendWarrior, multitaskerDay,
     reliableTwoWeeks, steadyFourWeeks, onTimeByDueDateCount, tasksCreatedCount,
