@@ -1400,6 +1400,38 @@ renderAll();
 checkAchievements();
 initCatDrag();
 updateCatAccessories();
+renderSceneStars();
+applyTimeTheme();
+setInterval(applyTimeTheme, 5 * 60 * 1000);
+
+/* ===================== Time-of-day theme ===================== */
+function computeTimeTheme() {
+  const hour = new Date().getHours();
+  if (hour >= 21 || hour < 5) return "night";
+  if (hour >= 16) return "afternoon";
+  return "morning";
+}
+
+function applyTimeTheme() {
+  document.documentElement.setAttribute("data-time-theme", computeTimeTheme());
+}
+
+function renderSceneStars() {
+  const container = document.getElementById("scene-stars");
+  if (!container) return;
+  container.innerHTML = "";
+  for (let i = 0; i < 14; i++) {
+    const star = document.createElement("div");
+    star.className = "scene-star";
+    const size = 2 + Math.random() * 2;
+    star.style.width = size + "px";
+    star.style.height = size + "px";
+    star.style.top = Math.random() * 55 + "%";
+    star.style.left = Math.random() * 100 + "%";
+    star.style.animationDelay = (Math.random() * 3) + "s";
+    container.appendChild(star);
+  }
+}
 
 /* ===================== Cat reactions ===================== */
 function triggerCatReaction() {

@@ -29,6 +29,28 @@
   --pri-timesensitive: #8a97d9;
 }
 
+/* ===== Time-of-day themes ===== */
+html[data-time-theme="afternoon"] {
+  --bg-page: #8a6f8f;
+}
+html[data-time-theme="night"] {
+  --bg-page: #241a3d;
+  --bg-panel: #241c38;
+  --bg-panel-alt: #2f2547;
+  --bg-input: #1c1530;
+  --outline: #4a3d6b;
+  --outline-strong: #6b5a99;
+
+  --text-main: #f3ecff;
+  --text-sub: #b8a9d9;
+
+  --accent: #8fb6d9;
+  --accent-soft: #33425a;
+  --gold: #f0c674;
+
+  --shadow-soft: rgba(0, 0, 0, 0.4);
+}
+
 * { box-sizing: border-box; }
 
 html, body {
@@ -40,6 +62,79 @@ html, body {
   background: var(--bg-page);
   scrollbar-width: thin;
   scrollbar-color: var(--outline-strong) var(--bg-panel-alt);
+}
+
+/* ===== Scenic background ===== */
+.scene-bg {
+  position: fixed;
+  inset: 0;
+  background: var(--bg-page);
+  overflow: hidden;
+}
+
+.scene-mountains, .scene-glow, .scene-cloud { display: none; }
+.scene-stars { position: absolute; inset: 0; display: none; }
+
+html[data-time-theme="afternoon"] .scene-bg {
+  background: linear-gradient(180deg, #3b3f7a 0%, #7a5f8f 35%, #c98a7c 65%, #f3b98a 100%);
+}
+html[data-time-theme="afternoon"] .scene-cloud { display: block; }
+html[data-time-theme="afternoon"] .scene-stars { display: block; opacity: 0.6; }
+
+.scene-cloud {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow:
+    16px 0 0 rgba(255, 255, 255, 0.85),
+    32px 0 0 rgba(255, 255, 255, 0.85),
+    8px -8px 0 rgba(255, 255, 255, 0.85),
+    24px -8px 0 rgba(255, 255, 255, 0.85),
+    0 8px 0 rgba(255, 255, 255, 0.85),
+    16px 8px 0 rgba(255, 255, 255, 0.85),
+    32px 8px 0 rgba(255, 255, 255, 0.85);
+}
+.scene-cloud-1 { top: 10%; left: 8%; transform: scale(1.4); }
+.scene-cloud-2 { top: 20%; right: 12%; transform: scale(1.1); opacity: 0.8; }
+.scene-cloud-3 { top: 32%; left: 42%; transform: scale(0.9); opacity: 0.7; }
+
+html[data-time-theme="night"] .scene-bg {
+  background: linear-gradient(180deg, #0c0a1a 0%, #241a3d 30%, #5c2b52 60%, #c9622e 100%);
+}
+html[data-time-theme="night"] .scene-mountains,
+html[data-time-theme="night"] .scene-glow {
+  display: block;
+}
+html[data-time-theme="night"] .scene-stars { display: block; }
+
+.scene-mountains {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 100%;
+  height: 22vh;
+  background: #0e0a1c;
+  clip-path: polygon(0% 100%, 0% 55%, 12% 35%, 26% 60%, 40% 25%, 55% 50%, 68% 20%, 82% 48%, 92% 30%, 100% 45%, 100% 100%);
+}
+.scene-glow {
+  position: absolute;
+  bottom: 10vh;
+  left: 50%;
+  width: 420px;
+  height: 220px;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(240, 150, 80, 0.45), transparent);
+}
+
+.scene-star {
+  position: absolute;
+  background: #ffffff;
+  animation: star-twinkle 3s ease-in-out infinite;
+}
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
 }
 
 *::-webkit-scrollbar { width: 14px; height: 14px; }
