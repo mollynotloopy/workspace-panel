@@ -289,10 +289,14 @@ function renderTasks() {
     : "All Tasks";
 
   const today = todayStr();
+  const viewingToday = selectedDate === today;
+  const showOverdue = !selectedDate || viewingToday;
 
   let visible = tasks.slice();
   if (selectedDate) {
-    visible = visible.filter(t => t.dueDate === selectedDate);
+    visible = viewingToday
+      ? visible.filter(t => t.dueDate === selectedDate || (!t.completed && t.dueDate && t.dueDate < today))
+      : visible.filter(t => t.dueDate === selectedDate);
   } else if (!showCompletedAll) {
     visible = visible.filter(t => !t.completed || t.completedOn === today);
   }
@@ -301,7 +305,7 @@ function renderTasks() {
   container.innerHTML = "";
 
   let overdueTasks = [];
-  if (!selectedDate) {
+  if (showOverdue) {
     overdueTasks = visible.filter(t => !t.completed && t.dueDate && t.dueDate < today);
     const overdueIds = new Set(overdueTasks.map(t => t.id));
     visible = visible.filter(t => !overdueIds.has(t.id));
