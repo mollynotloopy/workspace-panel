@@ -2,6 +2,7 @@
 const STORAGE_KEY = "molly-panel-tasks-v1";
 const SESSIONS_KEY = "molly-panel-sessions-v1";
 const ACHIEVEMENTS_KEY = "molly-panel-achievements-v1";
+const TASKS_CREATED_KEY = "molly-panel-tasks-created-v1";
 
 const CATEGORIES_KEY = "molly-panel-categories-v1";
 const DEFAULT_CATEGORIES = [
@@ -23,6 +24,15 @@ let tasks = loadTasks();
 let sessions = loadJSON(SESSIONS_KEY, []);
 let unlockedAchievements = loadJSON(ACHIEVEMENTS_KEY, {});
 let categories = loadJSON(CATEGORIES_KEY, DEFAULT_CATEGORIES);
+
+let tasksCreatedCount = loadJSON(TASKS_CREATED_KEY, null);
+if (tasksCreatedCount === null) {
+  tasksCreatedCount = tasks.length;
+}
+function saveTasksCreatedCount() {
+  localStorage.setItem(TASKS_CREATED_KEY, JSON.stringify(tasksCreatedCount));
+}
+saveTasksCreatedCount();
 let calendarViewDate = new Date(); // month currently displayed
 let selectedDate = null; // "YYYY-MM-DD" or null (show all)
 
@@ -561,19 +571,26 @@ document.getElementById("delete-task-btn").addEventListener("click", () => {
   const id = document.getElementById("task-id").value;
   if (!id) return;
   tasks = tasks.filter(t => t.id !== id);
+  sessions = sessions.filter(s => s.taskId !== id);
   saveTasks();
+  saveSessions();
   closeModal();
   renderAll();
+  checkAchievements();
 });
 
 document.getElementById("delete-series-btn").addEventListener("click", () => {
   const id = document.getElementById("task-id").value;
   const t = tasks.find(x => x.id === id);
   if (!t || !t.recurringId) return;
+  const removedIds = new Set(tasks.filter(x => x.recurringId === t.recurringId).map(x => x.id));
   tasks = tasks.filter(x => x.recurringId !== t.recurringId);
+  sessions = sessions.filter(s => !removedIds.has(s.taskId));
   saveTasks();
+  saveSessions();
   closeModal();
   renderAll();
+  checkAchievements();
 });
 
 function generateRecurringDates(startStr, untilStr, frequency, weekdaySet) {
@@ -677,12 +694,14 @@ form.addEventListener("submit", (e) => {
       const existingByDate = {};
       tasks.filter(t => t.recurringId === recurringId).forEach(t => { existingByDate[t.dueDate] = t; });
 
+      let newOccurrenceCount = 0;
       const seriesTasks = rec.dates.map(dateStr => {
         const prior = existingByDate[dateStr];
         if (prior) {
           Object.assign(prior, baseData, recurringMeta, { dueDate: dateStr, dueTime: rec.time });
           return prior;
         }
+        newOccurrenceCount++;
         return {
           id: uid(),
           completed: false,
@@ -696,6 +715,8 @@ form.addEventListener("submit", (e) => {
 
       tasks = tasks.filter(t => t.recurringId !== recurringId);
       tasks.push(...seriesTasks);
+      tasksCreatedCount += newOccurrenceCount;
+      saveTasksCreatedCount();
     } else {
       rec.dates.forEach(dateStr => {
         tasks.push({
@@ -708,6 +729,8 @@ form.addEventListener("submit", (e) => {
           ...baseData,
         });
       });
+      tasksCreatedCount += rec.dates.length;
+      saveTasksCreatedCount();
     }
   } else {
     const data = {
@@ -726,6 +749,8 @@ form.addEventListener("submit", (e) => {
         ...data,
       };
       tasks.push(newTaskRef);
+      tasksCreatedCount++;
+      saveTasksCreatedCount();
     }
   }
 
@@ -770,6 +795,10 @@ const ACHIEVEMENTS = [
   { id: "habit",        category: "Milestones",  title: "Creature of Habit", desc: "Complete 10 occurrences from a recurring series.",   check: ctx => ctx.recurringCompletedCount >= 10, progress: ctx => [ctx.recurringCompletedCount, 10] },
   { id: "efficiency-20",category: "Milestones",  title: "Efficiency Expert", desc: "Finish 20 tasks within their estimated time.",       check: ctx => ctx.onTimeCompletedCount >= 20,  progress: ctx => [ctx.onTimeCompletedCount, 20] },
   { id: "cat-champion", category: "Milestones",  title: "Category Champion", desc: "Complete 20 tasks in a single category.",            check: ctx => ctx.maxCategoryCount >= 20,       progress: ctx => [ctx.maxCategoryCount, 20] },
+  { id: "punctual-10",  category: "Milestones",  title: "Punctual",         desc: "Complete 10 tasks on or before their due date.",      check: ctx => ctx.onTimeByDueDateCount >= 10,   progress: ctx => [ctx.onTimeByDueDateCount, 10] },
+  { id: "punctual-50",  category: "Milestones",  title: "Always On Time",   desc: "Complete 50 tasks on or before their due date.",      check: ctx => ctx.onTimeByDueDateCount >= 50,   progress: ctx => [ctx.onTimeByDueDateCount, 50] },
+  { id: "organizer-50", category: "Milestones",  title: "Getting Organized",desc: "Create 50 tasks in total.",                           check: ctx => ctx.tasksCreatedCount >= 50,      progress: ctx => [ctx.tasksCreatedCount, 50] },
+  { id: "planner-150",  category: "Milestones",  title: "Master Planner",  desc: "Create 150 tasks in total.",                          check: ctx => ctx.tasksCreatedCount >= 150,     progress: ctx => [ctx.tasksCreatedCount, 150] },
 
   { id: "streak-3",     category: "Streaks",     title: "On a Roll",         desc: "Complete all due tasks on time, 3 days in a row.",   check: ctx => ctx.streak >= 3,                 progress: ctx => [ctx.streak, 3] },
   { id: "streak-7",     category: "Streaks",     title: "Unstoppable",       desc: "7-day on-time completion streak.",                   check: ctx => ctx.streak >= 7,                 progress: ctx => [ctx.streak, 7] },
@@ -859,11 +888,13 @@ function computeContext() {
   const reliableTwoWeeks = [week0, week1].every(w => w.productivityPct !== null && w.productivityPct >= 80);
   const steadyFourWeeks = [week0, week1, week2, week3].every(w => w.productivityPct !== null && w.productivityPct >= 80);
 
+  const onTimeByDueDateCount = tasks.filter(t => t.completed && t.dueDate && t.completedOn && t.completedOn <= t.dueDate).length;
+
   return {
     totalCompleted, highPriorityCompleted, todayAllDone, streak, totalSessions, maxDayMinutes,
     totalTrackedMinutes, distinctCategoriesCompleted, recurringCompletedCount, earlyBird, nightOwl, weeklyPerfect,
     onTimeCompletedCount, speedRunner, maxCategoryCount, weekendWarrior, multitaskerDay,
-    reliableTwoWeeks, steadyFourWeeks,
+    reliableTwoWeeks, steadyFourWeeks, onTimeByDueDateCount, tasksCreatedCount,
   };
 }
 
