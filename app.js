@@ -288,21 +288,48 @@ function renderTasks() {
     ? `Tasks for ${new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric" })}`
     : "All Tasks";
 
+  const today = todayStr();
+
   let visible = tasks.slice();
   if (selectedDate) {
     visible = visible.filter(t => t.dueDate === selectedDate);
   } else if (!showCompletedAll) {
-    const today = todayStr();
     visible = visible.filter(t => !t.completed || t.completedOn === today);
   }
   if (filterCat !== "all") visible = visible.filter(t => t.category === filterCat);
 
   container.innerHTML = "";
 
-  if (visible.length === 0) {
+  let overdueTasks = [];
+  if (!selectedDate) {
+    overdueTasks = visible.filter(t => !t.completed && t.dueDate && t.dueDate < today);
+    const overdueIds = new Set(overdueTasks.map(t => t.id));
+    visible = visible.filter(t => !overdueIds.has(t.id));
+  }
+
+  if (visible.length === 0 && overdueTasks.length === 0) {
     container.innerHTML = `<div class="empty-state">No tasks here yet — add one to get started ✨</div>`;
     return;
   }
+
+  if (overdueTasks.length > 0) {
+    overdueTasks.sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
+    const block = document.createElement("div");
+    block.className = "category-block";
+    block.innerHTML = `
+      <div class="category-heading overdue-heading">
+        <span class="category-dot overdue-dot"></span>
+        Overdue
+        <span class="category-count">${overdueTasks.length}</span>
+      </div>
+      <div class="task-list"></div>
+    `;
+    const list = block.querySelector(".task-list");
+    overdueTasks.forEach(t => list.appendChild(renderTaskItem(t)));
+    container.appendChild(block);
+  }
+
+  if (visible.length === 0) return;
 
   const priorityOrder = { high: 0, "time-sensitive": 1, medium: 2, low: 3 };
   const categoryNames = categories.map(c => c.name);
@@ -353,7 +380,8 @@ function renderTaskItem(t) {
   const sideParts = [];
   if (t.dueDate) {
     const dateLabel = new Date(t.dueDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    sideParts.push(`<div class="task-due">Due ${dateLabel}${t.dueTime ? " · " + formatTime(t.dueTime) : ""}</div>`);
+    const isOverdue = !t.completed && t.dueDate < todayStr();
+    sideParts.push(`<div class="task-due${isOverdue ? " overdue" : ""}">Due ${dateLabel}${t.dueTime ? " · " + formatTime(t.dueTime) : ""}</div>`);
   }
   if (t.estimate) sideParts.push(`<div class="task-estimate">${t.estimate} min</div>`);
 

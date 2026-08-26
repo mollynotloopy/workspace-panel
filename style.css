@@ -401,6 +401,10 @@ select {
   white-space: nowrap;
 }
 .task-side .task-due { font-weight: 600; color: var(--text-main); }
+.task-side .task-due.overdue { color: var(--pri-high); }
+
+.overdue-heading { color: var(--pri-high); }
+.overdue-dot { background: var(--pri-high); }
 .task-side .task-estimate { margin-top: 2px; }
 
 .empty-state {
