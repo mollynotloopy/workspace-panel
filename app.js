@@ -146,7 +146,12 @@ function renderCalendar() {
   const startOffset = firstDay.getDay();
   const daysInMonth = new Date(year, month + 1, 0).getDate();
 
-  const datesWithTasks = new Set(tasks.filter(t => t.dueDate).map(t => t.dueDate));
+  const datesCategoryColors = {};
+  tasks.filter(t => t.dueDate).forEach(t => {
+    const color = getCategoryColor(t.category);
+    if (!datesCategoryColors[t.dueDate]) datesCategoryColors[t.dueDate] = new Set();
+    datesCategoryColors[t.dueDate].add(color);
+  });
   const today = todayStr();
 
   for (let i = 0; i < startOffset; i++) {
@@ -163,10 +168,17 @@ function renderCalendar() {
     if (dateStr === today) cell.classList.add("today");
     if (dateStr === selectedDate) cell.classList.add("selected");
     cell.innerHTML = `${d}`;
-    if (datesWithTasks.has(dateStr)) {
-      const dot = document.createElement("span");
-      dot.className = "dot";
-      cell.appendChild(dot);
+    const dayColors = datesCategoryColors[dateStr];
+    if (dayColors && dayColors.size) {
+      const dotsWrap = document.createElement("div");
+      dotsWrap.className = "cal-dots";
+      Array.from(dayColors).slice(0, 4).forEach(color => {
+        const dot = document.createElement("span");
+        dot.className = "dot";
+        dot.style.background = color;
+        dotsWrap.appendChild(dot);
+      });
+      cell.appendChild(dotsWrap);
     }
     cell.addEventListener("click", () => {
       selectedDate = (selectedDate === dateStr) ? null : dateStr;
@@ -996,6 +1008,22 @@ function renderAchievements() {
   if (label) label.textContent = `${unlockedCount} / ${ACHIEVEMENTS.length} unlocked`;
 }
 
+const CONFETTI_COLORS = ["#f0b93c", "#8fb6d9", "#e08fa0", "#8bbf8a", "#a897d9"];
+
+function spawnConfetti(container) {
+  for (let i = 0; i < 14; i++) {
+    const piece = document.createElement("div");
+    piece.className = "confetti-piece";
+    piece.style.background = CONFETTI_COLORS[Math.floor(Math.random() * CONFETTI_COLORS.length)];
+    piece.style.left = (40 + Math.random() * 20) + "%";
+    piece.style.setProperty("--dx", (Math.random() * 160 - 80) + "px");
+    piece.style.setProperty("--dr", (Math.random() * 360 - 180) + "deg");
+    piece.style.animationDelay = (Math.random() * 0.15) + "s";
+    container.appendChild(piece);
+    setTimeout(() => piece.remove(), 1100);
+  }
+}
+
 function showToast(achievement) {
   const container = document.getElementById("toast-container");
   const toast = document.createElement("div");
@@ -1008,6 +1036,7 @@ function showToast(achievement) {
     </div>
   `;
   container.appendChild(toast);
+  spawnConfetti(toast);
   setTimeout(() => {
     toast.classList.add("fade-out");
     setTimeout(() => toast.remove(), 300);
