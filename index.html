@@ -303,6 +303,17 @@
         <textarea id="task-notes" rows="2" placeholder="Any extra detail..."></textarea>
       </label>
 
+      <div class="completion-section">
+        <label class="field checkbox-field">
+          <input type="checkbox" id="task-completed-checkbox" />
+          <span>Mark as completed</span>
+        </label>
+        <div class="field" id="actual-minutes-field" style="display:none;">
+          <span>Time spent (minutes)</span>
+          <input type="number" id="task-actual-minutes" min="0" step="5" placeholder="e.g. 25" />
+        </div>
+      </div>
+
       <div class="modal-actions">
         <button type="button" class="btn-ghost" id="delete-task-btn" style="display:none;">Delete</button>
         <button type="button" class="btn-ghost" id="delete-series-btn" style="display:none;">Delete Series</button>

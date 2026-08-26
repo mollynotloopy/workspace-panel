@@ -467,6 +467,10 @@ function openModal(taskId = null) {
   const t = taskId ? tasks.find(x => x.id === taskId) : null;
   const isSeriesEdit = !!(t && t.recurringId);
 
+  document.getElementById("task-completed-checkbox").checked = t ? !!t.completed : false;
+  document.getElementById("task-actual-minutes").value = "";
+  document.getElementById("actual-minutes-field").style.display = "none";
+
   const deleteBtn = document.getElementById("delete-task-btn");
   deleteBtn.style.display = taskId ? "inline-block" : "none";
   deleteBtn.textContent = isSeriesEdit ? "Delete This Occurrence" : "Delete";
@@ -516,6 +520,10 @@ document.getElementById("add-task-btn").addEventListener("click", () => openModa
 document.getElementById("modal-close").addEventListener("click", closeModal);
 document.getElementById("cancel-task-btn").addEventListener("click", closeModal);
 overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
+
+document.getElementById("task-completed-checkbox").addEventListener("change", (e) => {
+  document.getElementById("actual-minutes-field").style.display = e.target.checked ? "block" : "none";
+});
 
 document.getElementById("delete-task-btn").addEventListener("click", () => {
   const id = document.getElementById("task-id").value;
@@ -614,8 +622,10 @@ form.addEventListener("submit", (e) => {
   if (!baseData.title) return;
 
   const existingTask = id ? tasks.find(x => x.id === id) : null;
+  const wasCompleted = existingTask ? existingTask.completed : false;
   const isSeriesEdit = !!(existingTask && existingTask.recurringId);
   const isNewRecurring = !id && recurringCheckbox.checked;
+  let newTaskRef = null;
 
   if (isNewRecurring || isSeriesEdit) {
     const rec = readRecurrenceForm();
@@ -677,18 +687,38 @@ form.addEventListener("submit", (e) => {
     if (id) {
       Object.assign(existingTask, data);
     } else {
-      tasks.push({
+      newTaskRef = {
         id: uid(),
         completed: false,
         completedOn: null,
         ...data,
-      });
+      };
+      tasks.push(newTaskRef);
     }
+  }
+
+  const completedNow = document.getElementById("task-completed-checkbox").checked;
+  const manualMinutes = parseInt(document.getElementById("task-actual-minutes").value, 10);
+  const targetTask = existingTask || (!isNewRecurring ? newTaskRef : null);
+
+  if (targetTask && completedNow && !wasCompleted) {
+    targetTask.completed = true;
+    targetTask.completedOn = todayStr();
+    targetTask.completedAt = new Date().toISOString();
+    if (manualMinutes > 0) {
+      sessions.push({ id: uid(), taskId: targetTask.id, category: targetTask.category, date: todayStr(), minutes: manualMinutes });
+      saveSessions();
+    }
+  } else if (targetTask && !completedNow && wasCompleted) {
+    targetTask.completed = false;
+    targetTask.completedOn = null;
+    targetTask.completedAt = null;
   }
 
   saveTasks();
   closeModal();
   renderAll();
+  checkAchievements();
 });
 
 /* ===================== Achievements ===================== */
