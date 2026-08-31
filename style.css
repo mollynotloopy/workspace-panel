@@ -547,6 +547,8 @@ select {
 
 .overdue-heading { color: var(--pri-high); }
 .overdue-dot { background: var(--pri-high); }
+.completed-heading { color: var(--text-sub); }
+.completed-dot { background: var(--text-sub); }
 .task-side .task-estimate { margin-top: 2px; }
 
 .empty-state {

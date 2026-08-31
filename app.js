@@ -362,16 +362,19 @@ function renderTasks() {
   const usedCategories = new Set(visible.map(t => t.category));
   usedCategories.forEach(cat => { if (!categoryNames.includes(cat)) categoryNames.push(cat); });
 
+  const sortIncomplete = (a, b) => {
+    const pa = priorityOrder[a.priority] ?? 9;
+    const pb = priorityOrder[b.priority] ?? 9;
+    if (pa !== pb) return pa - pb;
+    return (a.dueDate || "9999").localeCompare(b.dueDate || "9999");
+  };
+
+  const completedTasks = [];
+
   categoryNames.forEach(cat => {
-    const catTasks = visible
-      .filter(t => t.category === cat)
-      .sort((a, b) => {
-        if (a.completed !== b.completed) return a.completed ? 1 : -1;
-        const pa = priorityOrder[a.priority] ?? 9;
-        const pb = priorityOrder[b.priority] ?? 9;
-        if (pa !== pb) return pa - pb;
-        return (a.dueDate || "9999").localeCompare(b.dueDate || "9999");
-      });
+    const allCatTasks = visible.filter(t => t.category === cat);
+    allCatTasks.forEach(t => { if (t.completed) completedTasks.push(t); });
+    const catTasks = allCatTasks.filter(t => !t.completed).sort(sortIncomplete);
 
     if (catTasks.length === 0) return;
 
@@ -391,15 +394,36 @@ function renderTasks() {
     catTasks.forEach(t => list.appendChild(renderTaskItem(t)));
     container.appendChild(block);
   });
+
+  if (completedTasks.length > 0) {
+    completedTasks.sort((a, b) => (b.completedOn || b.dueDate || "").localeCompare(a.completedOn || a.dueDate || ""));
+    const block = document.createElement("div");
+    block.className = "category-block";
+    block.innerHTML = `
+      <div class="category-heading completed-heading">
+        <span class="category-dot completed-dot"></span>
+        Completed
+        <span class="category-count">${completedTasks.length}</span>
+      </div>
+      <div class="task-list"></div>
+    `;
+    const list = block.querySelector(".task-list");
+    completedTasks.forEach(t => list.appendChild(renderTaskItem(t, true)));
+    container.appendChild(block);
+  }
 }
 
-function renderTaskItem(t) {
+function renderTaskItem(t, showCategory) {
   const pMeta = PRIORITY_META[t.priority] || PRIORITY_META.medium;
   const item = document.createElement("div");
   item.className = "task-item" + (t.completed ? " completed" : "");
   item.style.borderLeftColor = pMeta.color;
 
   const metaParts = [];
+  if (showCategory) {
+    const catColor = getCategoryColor(t.category);
+    metaParts.push(`<span class="recurring-badge" style="color:${catColor}">${escapeHtml(t.category)}</span>`);
+  }
   if (t.recurringId) metaParts.push(`<span class="recurring-badge">↻ Recurring</span>`);
   if (t.link) metaParts.push(`<a href="${escapeAttr(t.link)}" target="_blank" rel="noopener">Link</a>`);
 
