@@ -509,10 +509,20 @@ select {
   color: #ffffff;
 }
 .task-checkbox.checked { background: var(--accent); border-color: var(--accent); }
+.task-checkbox.status-ongoing { background: var(--gold); border-color: var(--gold); color: #4a3d33; font-size: 12px; }
 
 .task-body { flex: 1; min-width: 0; }
 .task-title-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .task-title { font-weight: 600; font-size: 14.5px; color: var(--text-main); }
+.status-badge-ongoing {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border: 1px solid var(--gold);
+  color: var(--gold);
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
 .priority-badge {
   font-size: 10px;
   font-weight: 700;

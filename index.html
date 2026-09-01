@@ -316,9 +316,13 @@
       </label>
 
       <div class="completion-section">
-        <label class="field checkbox-field">
-          <input type="checkbox" id="task-completed-checkbox" />
-          <span>Mark as completed</span>
+        <label class="field">
+          <span>Status</span>
+          <select id="task-status-select">
+            <option value="not-started">Not Started</option>
+            <option value="ongoing">Ongoing</option>
+            <option value="completed">Completed</option>
+          </select>
         </label>
         <div class="field" id="actual-minutes-field" style="display:none;">
           <span>Time spent (minutes)</span>

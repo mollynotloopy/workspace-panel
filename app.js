@@ -415,8 +415,9 @@ function renderTasks() {
 
 function renderTaskItem(t, showCategory) {
   const pMeta = PRIORITY_META[t.priority] || PRIORITY_META.medium;
+  const status = getTaskStatus(t);
   const item = document.createElement("div");
-  item.className = "task-item" + (t.completed ? " completed" : "");
+  item.className = "task-item" + (t.completed ? " completed" : "") + ` status-${status}`;
   item.style.borderLeftColor = pMeta.color;
 
   const metaParts = [];
@@ -436,10 +437,11 @@ function renderTaskItem(t, showCategory) {
   if (t.estimate) sideParts.push(`<div class="task-estimate">${t.estimate} min</div>`);
 
   item.innerHTML = `
-    <div class="task-checkbox ${t.completed ? "checked" : ""}">${t.completed ? "✓" : ""}</div>
+    <div class="task-checkbox status-${status}" title="${STATUS_META[status].label} — click to change">${STATUS_META[status].icon}</div>
     <div class="task-body">
       <div class="task-title-row">
         <span class="task-title">${escapeHtml(t.title)}</span>
+        ${status === "ongoing" ? `<span class="status-badge status-badge-ongoing">Ongoing</span>` : ""}
         <span class="priority-badge" style="background:${pMeta.color}">${pMeta.label}</span>
       </div>
       ${metaParts.length ? `<div class="task-meta">${metaParts.join("")}</div>` : ""}
@@ -450,7 +452,7 @@ function renderTaskItem(t, showCategory) {
 
   item.querySelector(".task-checkbox").addEventListener("click", (e) => {
     e.stopPropagation();
-    toggleComplete(t.id);
+    cycleTaskStatus(t.id);
   });
 
   item.addEventListener("click", () => openModal(t.id));
@@ -474,10 +476,24 @@ function escapeAttr(str) {
   return (str ?? "").replace(/"/g, "&quot;");
 }
 
-function toggleComplete(id) {
+function getTaskStatus(t) {
+  return t.status || (t.completed ? "completed" : "not-started");
+}
+
+const STATUS_ORDER = ["not-started", "ongoing", "completed"];
+const STATUS_META = {
+  "not-started": { label: "Not Started", icon: "" },
+  "ongoing": { label: "Ongoing", icon: "◐" },
+  "completed": { label: "Completed", icon: "✓" },
+};
+
+function cycleTaskStatus(id) {
   const t = tasks.find(x => x.id === id);
   if (!t) return;
-  t.completed = !t.completed;
+  const cur = getTaskStatus(t);
+  const next = STATUS_ORDER[(STATUS_ORDER.indexOf(cur) + 1) % STATUS_ORDER.length];
+  t.status = next;
+  t.completed = next === "completed";
   t.completedOn = t.completed ? todayStr() : null;
   t.completedAt = t.completed ? new Date().toISOString() : null;
   saveTasks();
@@ -545,7 +561,7 @@ function openModal(taskId = null) {
   const t = taskId ? tasks.find(x => x.id === taskId) : null;
   const isSeriesEdit = !!(t && t.recurringId);
 
-  document.getElementById("task-completed-checkbox").checked = t ? !!t.completed : false;
+  document.getElementById("task-status-select").value = t ? getTaskStatus(t) : "not-started";
   document.getElementById("task-actual-minutes").value = "";
   document.getElementById("actual-minutes-field").style.display = "none";
 
@@ -599,8 +615,8 @@ document.getElementById("modal-close").addEventListener("click", closeModal);
 document.getElementById("cancel-task-btn").addEventListener("click", closeModal);
 overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
 
-document.getElementById("task-completed-checkbox").addEventListener("change", (e) => {
-  document.getElementById("actual-minutes-field").style.display = e.target.checked ? "block" : "none";
+document.getElementById("task-status-select").addEventListener("change", (e) => {
+  document.getElementById("actual-minutes-field").style.display = e.target.value === "completed" ? "block" : "none";
 });
 
 document.getElementById("delete-task-btn").addEventListener("click", () => {
@@ -790,22 +806,26 @@ form.addEventListener("submit", (e) => {
     }
   }
 
-  const completedNow = document.getElementById("task-completed-checkbox").checked;
+  const statusValue = document.getElementById("task-status-select").value;
+  const completedNow = statusValue === "completed";
   const manualMinutes = parseInt(document.getElementById("task-actual-minutes").value, 10);
   const targetTask = existingTask || (!isNewRecurring ? newTaskRef : null);
 
-  if (targetTask && completedNow && !wasCompleted) {
-    targetTask.completed = true;
-    targetTask.completedOn = todayStr();
-    targetTask.completedAt = new Date().toISOString();
-    if (manualMinutes > 0) {
-      sessions.push({ id: uid(), taskId: targetTask.id, category: targetTask.category, date: todayStr(), minutes: manualMinutes });
-      saveSessions();
+  if (targetTask) {
+    targetTask.status = statusValue;
+    if (completedNow && !wasCompleted) {
+      targetTask.completed = true;
+      targetTask.completedOn = todayStr();
+      targetTask.completedAt = new Date().toISOString();
+      if (manualMinutes > 0) {
+        sessions.push({ id: uid(), taskId: targetTask.id, category: targetTask.category, date: todayStr(), minutes: manualMinutes });
+        saveSessions();
+      }
+    } else if (!completedNow && wasCompleted) {
+      targetTask.completed = false;
+      targetTask.completedOn = null;
+      targetTask.completedAt = null;
     }
-  } else if (targetTask && !completedNow && wasCompleted) {
-    targetTask.completed = false;
-    targetTask.completedOn = null;
-    targetTask.completedAt = null;
   }
 
   saveTasks();
@@ -1240,6 +1260,7 @@ document.getElementById("timer-complete").addEventListener("click", () => {
   saveSessions();
 
   task.completed = true;
+  task.status = "completed";
   task.completedOn = todayStr();
   task.completedAt = new Date().toISOString();
   saveTasks();
