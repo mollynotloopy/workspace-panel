@@ -212,7 +212,7 @@ function renderStats() {
   const highPriority = incomplete.filter(t => t.priority === "high" && t.dueDate === today).length;
 
   const todaysMinutes = incomplete
-    .filter(t => t.dueDate === today)
+    .filter(t => t.dueDate === today || (t.dueDate && t.dueDate < today))
     .reduce((sum, t) => sum + (Number(t.estimate) || 0), 0);
   const hrs = Math.floor(todaysMinutes / 60);
   const mins = todaysMinutes % 60;
@@ -1093,13 +1093,17 @@ function populateTimerTaskSelect() {
   const current = select.value;
   const today = todayStr();
   select.innerHTML = `<option value="">Select a task...</option>`;
-  tasks.filter(t => !t.completed && t.dueDate === today).forEach(t => {
-    const opt = document.createElement("option");
-    opt.value = t.id;
-    opt.textContent = `${t.title} (${t.category})`;
-    select.appendChild(opt);
-  });
-  if (current && tasks.some(t => t.id === current && !t.completed && t.dueDate === today)) {
+  const eligible = tasks.filter(t => !t.completed && t.dueDate && t.dueDate <= today);
+  eligible
+    .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""))
+    .forEach(t => {
+      const opt = document.createElement("option");
+      opt.value = t.id;
+      const overdueTag = t.dueDate < today ? " — Overdue" : "";
+      opt.textContent = `${t.title} (${t.category})${overdueTag}`;
+      select.appendChild(opt);
+    });
+  if (current && eligible.some(t => t.id === current)) {
     select.value = current;
   }
 }
