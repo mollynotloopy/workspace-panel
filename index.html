@@ -80,18 +80,30 @@
     <div class="workspace-grid">
 
       <!-- Left: Calendar -->
-      <section class="card calendar-card">
-        <div class="calendar-header">
-          <button class="icon-btn" id="cal-prev">&#8249;</button>
-          <h2 id="cal-month-label"></h2>
-          <button class="icon-btn" id="cal-next">&#8250;</button>
-        </div>
-        <div class="calendar-weekdays">
-          <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
-        </div>
-        <div class="calendar-grid" id="calendar-grid"></div>
-        <button class="text-btn" id="cal-clear" style="display:none;">Show all tasks</button>
-      </section>
+      <div class="calendar-col">
+        <section class="card calendar-card">
+          <div class="calendar-header">
+            <button class="icon-btn" id="cal-prev">&#8249;</button>
+            <h2 id="cal-month-label"></h2>
+            <button class="icon-btn" id="cal-next">&#8250;</button>
+          </div>
+          <div class="calendar-weekdays">
+            <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+          </div>
+          <div class="calendar-grid" id="calendar-grid"></div>
+          <button class="text-btn" id="cal-clear" style="display:none;">Show all tasks</button>
+        </section>
+
+        <!-- Priority Queue: drag to rank today's + overdue tasks -->
+        <section class="card priority-queue-card">
+          <div class="priority-queue-header">
+            <h2>Priority Queue</h2>
+            <span class="priority-queue-hint">Drag to rank</span>
+          </div>
+          <div class="priority-queue-list" id="priority-queue-list"></div>
+          <div class="priority-queue-empty" id="priority-queue-empty" style="display:none;">Nothing due today or overdue ✨</div>
+        </section>
+      </div>
 
       <!-- Right: Task Overview -->
       <section class="tasks-section">

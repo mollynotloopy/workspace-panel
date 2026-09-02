@@ -310,6 +310,8 @@ h1 { text-shadow: 2px 2px 0 var(--shadow-soft); }
   .workspace-grid { grid-template-columns: 1fr; }
 }
 
+.calendar-col { display: flex; flex-direction: column; gap: 22px; }
+
 /* ===== Calendar ===== */
 .calendar-card { display: flex; flex-direction: column; }
 .calendar-header {
@@ -389,6 +391,86 @@ h1 { text-shadow: 2px 2px 0 var(--shadow-soft); }
   align-self: flex-start;
   text-decoration: underline;
   padding: 0;
+}
+
+/* ===== Priority Queue ===== */
+.priority-queue-card { display: flex; flex-direction: column; }
+.priority-queue-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.priority-queue-header h2 { font-size: 16px; color: var(--text-main); }
+.priority-queue-hint { font-size: 10.5px; color: var(--text-sub); }
+
+.priority-queue-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.priority-queue-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 8px;
+  background: var(--bg-input);
+  border: 2px solid var(--outline);
+  cursor: grab;
+  user-select: none;
+}
+.priority-queue-item:active { cursor: grabbing; }
+.priority-queue-item.dragging { opacity: .4; }
+.priority-queue-item.drag-over { border-color: var(--accent); border-style: dashed; }
+
+.pq-rank {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 10.5px;
+  font-weight: 700;
+  background: var(--bg-panel-alt);
+  border: 1px solid var(--outline);
+  color: var(--text-sub);
+}
+.pq-handle { flex-shrink: 0; color: var(--text-sub); font-size: 12px; letter-spacing: -1px; }
+
+.pq-title {
+  flex: 1;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text-main);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pq-due {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  color: var(--text-sub);
+  font-weight: 600;
+}
+.pq-due.overdue { color: var(--pri-high); }
+
+.pq-priority {
+  flex-shrink: 0;
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border: 1px solid rgba(0,0,0,0.12);
+  color: #4a3d33;
+  text-transform: uppercase;
+  letter-spacing: .3px;
+}
+
+.priority-queue-empty {
+  font-size: 12.5px;
+  color: var(--text-sub);
+  padding: 8px 2px;
 }
 
 /* ===== Stats ===== */

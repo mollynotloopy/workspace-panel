@@ -4,6 +4,7 @@ const SESSIONS_KEY = "molly-panel-sessions-v1";
 const ACHIEVEMENTS_KEY = "molly-panel-achievements-v1";
 const TASKS_CREATED_KEY = "molly-panel-tasks-created-v1";
 
+const PRIORITY_QUEUE_KEY = "molly-panel-priority-queue-v1";
 const CATEGORIES_KEY = "molly-panel-categories-v1";
 const DEFAULT_CATEGORIES = [
   { name: "Recruiting", color: "#7fa9d0" },
@@ -24,6 +25,7 @@ let tasks = loadTasks();
 let sessions = loadJSON(SESSIONS_KEY, []);
 let unlockedAchievements = loadJSON(ACHIEVEMENTS_KEY, {});
 let categories = loadJSON(CATEGORIES_KEY, DEFAULT_CATEGORIES);
+let priorityQueueOrder = loadJSON(PRIORITY_QUEUE_KEY, []);
 
 let tasksCreatedCount = loadJSON(TASKS_CREATED_KEY, null);
 if (tasksCreatedCount === null) {
@@ -237,6 +239,81 @@ function formatMinutesLabel(totalMinutes) {
   const hrs = Math.floor(totalMinutes / 60);
   const mins = totalMinutes % 60;
   return hrs > 0 ? `${hrs}h ${mins ? mins + "m" : ""}`.trim() : `${mins}m`;
+}
+
+/* ===================== Priority Queue ===================== */
+function savePriorityQueue() {
+  localStorage.setItem(PRIORITY_QUEUE_KEY, JSON.stringify(priorityQueueOrder));
+}
+
+let pqDragId = null;
+
+function renderPriorityQueue() {
+  const list = document.getElementById("priority-queue-list");
+  const empty = document.getElementById("priority-queue-empty");
+  const today = todayStr();
+
+  const eligible = tasks.filter(t => !t.completed && t.dueDate && t.dueDate <= today);
+  const eligibleIds = new Set(eligible.map(t => t.id));
+
+  priorityQueueOrder = priorityQueueOrder.filter(id => eligibleIds.has(id));
+  eligible.forEach(t => { if (!priorityQueueOrder.includes(t.id)) priorityQueueOrder.push(t.id); });
+  savePriorityQueue();
+
+  const byId = new Map(eligible.map(t => [t.id, t]));
+  const ordered = priorityQueueOrder.map(id => byId.get(id)).filter(Boolean);
+
+  list.innerHTML = "";
+  empty.style.display = ordered.length === 0 ? "block" : "none";
+
+  ordered.forEach((t, i) => {
+    const pMeta = PRIORITY_META[t.priority] || PRIORITY_META.medium;
+    const isOverdue = t.dueDate < today;
+    const dateLabel = new Date(t.dueDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+    const row = document.createElement("div");
+    row.className = "priority-queue-item";
+    row.draggable = true;
+    row.dataset.id = t.id;
+    row.innerHTML = `
+      <span class="pq-rank">${i + 1}</span>
+      <span class="pq-handle">⠿</span>
+      <span class="pq-title" title="${escapeAttr(t.title)}">${escapeHtml(t.title)}</span>
+      <span class="pq-due${isOverdue ? " overdue" : ""}">${isOverdue ? "Overdue · " : ""}${dateLabel}</span>
+      <span class="pq-priority" style="background:${pMeta.color}">${pMeta.label}</span>
+    `;
+
+    row.addEventListener("dragstart", (e) => {
+      pqDragId = t.id;
+      row.classList.add("dragging");
+      e.dataTransfer.effectAllowed = "move";
+    });
+    row.addEventListener("dragend", () => {
+      row.classList.remove("dragging");
+      list.querySelectorAll(".priority-queue-item").forEach(el => el.classList.remove("drag-over"));
+    });
+    row.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      if (t.id !== pqDragId) row.classList.add("drag-over");
+    });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      row.classList.remove("drag-over");
+      if (!pqDragId || pqDragId === t.id) return;
+      const fromIdx = priorityQueueOrder.indexOf(pqDragId);
+      const toIdx = priorityQueueOrder.indexOf(t.id);
+      if (fromIdx === -1 || toIdx === -1) return;
+      priorityQueueOrder.splice(fromIdx, 1);
+      priorityQueueOrder.splice(toIdx, 0, pqDragId);
+      savePriorityQueue();
+      renderPriorityQueue();
+    });
+
+    row.addEventListener("click", () => openModal(t.id));
+
+    list.appendChild(row);
+  });
 }
 
 /* ===================== Task list ===================== */
@@ -1443,6 +1520,7 @@ function renderAll() {
   renderAchievements();
   renderSummary();
   renderNextAchievement();
+  renderPriorityQueue();
 }
 
 renderAll();
