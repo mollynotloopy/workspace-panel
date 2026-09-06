@@ -154,6 +154,11 @@ function renderCalendar() {
     if (!datesCategoryColors[t.dueDate]) datesCategoryColors[t.dueDate] = new Set();
     datesCategoryColors[t.dueDate].add(color);
   });
+  tasks.filter(t => t.completed && t.completedOn).forEach(t => {
+    const color = getCategoryColor(t.category);
+    if (!datesCategoryColors[t.completedOn]) datesCategoryColors[t.completedOn] = new Set();
+    datesCategoryColors[t.completedOn].add(color);
+  });
   const today = todayStr();
 
   for (let i = 0; i < startOffset; i++) {
@@ -394,8 +399,8 @@ function renderTasks() {
   let visible = tasks.slice();
   if (selectedDate) {
     visible = viewingToday
-      ? visible.filter(t => t.dueDate === selectedDate || (!t.completed && t.dueDate && t.dueDate < today))
-      : visible.filter(t => t.dueDate === selectedDate);
+      ? visible.filter(t => t.dueDate === selectedDate || t.completedOn === selectedDate || (!t.completed && t.dueDate && t.dueDate < today))
+      : visible.filter(t => t.dueDate === selectedDate || t.completedOn === selectedDate);
   } else if (!showCompletedAll) {
     visible = visible.filter(t => !t.completed || t.completedOn === today);
   }
