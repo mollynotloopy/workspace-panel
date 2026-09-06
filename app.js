@@ -1180,6 +1180,34 @@ let timerAlerted = false;
 let audioCtx = null;
 let timerStartTimestamp = null;
 
+const TIMER_BANK_KEY = "molly-panel-timer-bank-v1";
+let timerBankedSeconds = loadJSON(TIMER_BANK_KEY, {});
+
+function saveTimerBank() {
+  localStorage.setItem(TIMER_BANK_KEY, JSON.stringify(timerBankedSeconds));
+}
+
+function bankCurrentTime() {
+  if (!timerTaskId) return;
+  if (timerSeconds > 0) {
+    timerBankedSeconds[timerTaskId] = timerSeconds;
+  } else {
+    delete timerBankedSeconds[timerTaskId];
+  }
+  saveTimerBank();
+}
+
+function updateBankedHint() {
+  const hint = document.getElementById("timer-banked-hint");
+  const banked = timerTaskId ? timerBankedSeconds[timerTaskId] : null;
+  if (banked && !timerRunning) {
+    hint.textContent = `Resuming from ${formatTimer(banked)} already logged on this task`;
+    hint.style.display = "block";
+  } else {
+    hint.style.display = "none";
+  }
+}
+
 function syncTimerFromClock() {
   if (!timerRunning || timerStartTimestamp === null) return;
   timerSeconds = Math.floor((Date.now() - timerStartTimestamp) / 1000);
@@ -1222,6 +1250,7 @@ function formatTimer(totalSeconds) {
 
 function updateTimerDisplay() {
   document.getElementById("timer-time").textContent = formatTimer(timerSeconds);
+  updateBankedHint();
 
   const task = currentTimerTask();
   const bar = document.getElementById("timer-progress-bar");
@@ -1289,13 +1318,21 @@ function renderSessionList() {
 }
 
 document.getElementById("pomodoro-task-select").addEventListener("change", (e) => {
-  if (timerRunning) return;
+  if (timerRunning) {
+    syncTimerFromClock();
+    clearInterval(timerInterval);
+    timerRunning = false;
+    timerStartTimestamp = null;
+    document.getElementById("timer-toggle").textContent = "Start";
+  }
+  bankCurrentTime();
+
   timerTaskId = e.target.value;
-  timerSeconds = 0;
+  timerSeconds = timerTaskId ? (timerBankedSeconds[timerTaskId] || 0) : 0;
   timerAlerted = false;
   document.getElementById("timer-alert").classList.remove("show");
   document.getElementById("timer-toggle").disabled = !timerTaskId;
-  document.getElementById("timer-complete").style.display = "none";
+  document.getElementById("timer-complete").style.display = timerSeconds > 0 ? "inline-block" : "none";
   updateTimerDisplay();
 });
 
@@ -1308,10 +1345,12 @@ document.getElementById("timer-toggle").addEventListener("click", () => {
     document.getElementById("timer-complete").style.display = "inline-block";
     timerStartTimestamp = Date.now() - timerSeconds * 1000;
     timerInterval = setInterval(syncTimerFromClock, 1000);
+    updateBankedHint();
   } else {
     btn.textContent = "Start";
     clearInterval(timerInterval);
     timerSeconds = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+    bankCurrentTime();
     updateTimerDisplay();
   }
 });
@@ -1322,6 +1361,10 @@ document.getElementById("timer-reset").addEventListener("click", () => {
   timerSeconds = 0;
   timerStartTimestamp = null;
   timerAlerted = false;
+  if (timerTaskId) {
+    delete timerBankedSeconds[timerTaskId];
+    saveTimerBank();
+  }
   document.getElementById("timer-toggle").textContent = "Start";
   document.getElementById("timer-alert").classList.remove("show");
   document.getElementById("timer-complete").style.display = "none";
@@ -1346,6 +1389,9 @@ document.getElementById("timer-complete").addEventListener("click", () => {
   task.completedOn = todayStr();
   task.completedAt = new Date().toISOString();
   saveTasks();
+
+  delete timerBankedSeconds[task.id];
+  saveTimerBank();
 
   timerSeconds = 0;
   timerAlerted = false;
