@@ -763,7 +763,6 @@ function openModal(taskId = null) {
 
   document.getElementById("task-status-select").value = t ? getTaskStatus(t) : "not-started";
   document.getElementById("task-actual-minutes").value = "";
-  document.getElementById("actual-minutes-field").style.display = "none";
 
   const deleteBtn = document.getElementById("delete-task-btn");
   deleteBtn.style.display = taskId ? "inline-block" : "none";
@@ -815,9 +814,6 @@ document.getElementById("modal-close").addEventListener("click", closeModal);
 document.getElementById("cancel-task-btn").addEventListener("click", closeModal);
 overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(); });
 
-document.getElementById("task-status-select").addEventListener("change", (e) => {
-  document.getElementById("actual-minutes-field").style.display = e.target.value === "completed" ? "block" : "none";
-});
 
 document.getElementById("delete-task-btn").addEventListener("click", () => {
   const id = document.getElementById("task-id").value;
@@ -1017,14 +1013,14 @@ form.addEventListener("submit", (e) => {
       targetTask.completed = true;
       targetTask.completedOn = todayStr();
       targetTask.completedAt = new Date().toISOString();
-      if (manualMinutes > 0) {
-        sessions.push({ id: uid(), taskId: targetTask.id, category: targetTask.category, date: todayStr(), minutes: manualMinutes });
-        saveSessions();
-      }
     } else if (!completedNow && wasCompleted) {
       targetTask.completed = false;
       targetTask.completedOn = null;
       targetTask.completedAt = null;
+    }
+    if (manualMinutes > 0) {
+      sessions.push({ id: uid(), taskId: targetTask.id, category: targetTask.category, date: todayStr(), minutes: manualMinutes });
+      saveSessions();
     }
   }
 
