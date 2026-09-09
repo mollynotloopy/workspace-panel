@@ -21,6 +21,12 @@ const PRIORITY_META = {
   "time-sensitive":{ label: "Time-sensitive", color: "var(--pri-timesensitive)" },
 };
 
+/* ===================== Cloud sync (Artifact only) ===================== */
+let cloudDocRef = null;
+let cloudReady = false;
+let cloudApplyingRemote = false;
+let cloudPushTimer = null;
+
 let tasks = loadTasks();
 let sessions = loadJSON(SESSIONS_KEY, []);
 let unlockedAchievements = loadJSON(ACHIEVEMENTS_KEY, {});
@@ -33,8 +39,98 @@ if (tasksCreatedCount === null) {
 }
 function saveTasksCreatedCount() {
   localStorage.setItem(TASKS_CREATED_KEY, JSON.stringify(tasksCreatedCount));
+  schedulePush();
 }
 saveTasksCreatedCount();
+
+function updateSyncStatus(state) {
+  const el = document.getElementById("sync-status");
+  if (!el) return;
+  el.classList.remove("synced", "offline");
+  if (state === "synced") {
+    el.classList.add("synced");
+    el.innerHTML = `<span class="sync-dot"></span> Synced across devices`;
+    el.style.display = "flex";
+  } else if (state === "offline") {
+    el.classList.add("offline");
+    el.innerHTML = `<span class="sync-dot"></span> Sync unavailable — saving locally only`;
+    el.style.display = "flex";
+  } else {
+    el.style.display = "none";
+  }
+}
+
+function collectCloudState() {
+  return {
+    tasks, sessions, unlockedAchievements, categories,
+    priorityQueueOrder, tasksCreatedCount, timerBankedSeconds,
+    updatedAt: new Date().toISOString(),
+  };
+}
+
+function pushToCloud() {
+  if (!cloudDocRef) return;
+  cloudDocRef.set(collectCloudState())
+    .then(() => updateSyncStatus("synced"))
+    .catch(() => updateSyncStatus("offline"));
+}
+
+function schedulePush() {
+  if (!cloudReady || cloudApplyingRemote || !cloudDocRef) return;
+  clearTimeout(cloudPushTimer);
+  cloudPushTimer = setTimeout(pushToCloud, 500);
+}
+
+function applyCloudState(data) {
+  if (!data) return;
+  cloudApplyingRemote = true;
+  if (Array.isArray(data.tasks)) { tasks = data.tasks; localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
+  if (Array.isArray(data.sessions)) { sessions = data.sessions; localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); }
+  if (data.unlockedAchievements) { unlockedAchievements = data.unlockedAchievements; localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedAchievements)); }
+  if (Array.isArray(data.categories)) { categories = data.categories; localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories)); }
+  if (Array.isArray(data.priorityQueueOrder)) { priorityQueueOrder = data.priorityQueueOrder; localStorage.setItem(PRIORITY_QUEUE_KEY, JSON.stringify(priorityQueueOrder)); }
+  if (typeof data.tasksCreatedCount === "number") { tasksCreatedCount = data.tasksCreatedCount; localStorage.setItem(TASKS_CREATED_KEY, JSON.stringify(tasksCreatedCount)); }
+  if (data.timerBankedSeconds) { timerBankedSeconds = data.timerBankedSeconds; localStorage.setItem(TIMER_BANK_KEY, JSON.stringify(timerBankedSeconds)); }
+  cloudApplyingRemote = false;
+  renderAll();
+  checkAchievements();
+  updateSyncStatus("synced");
+}
+
+async function initCloudSync() {
+  if (!window.claude || typeof window.claude.use !== "function") return;
+  let db;
+  try {
+    db = await window.claude.use("db");
+  } catch (e) {
+    db = null;
+  }
+  if (!db) {
+    updateSyncStatus("offline");
+    return;
+  }
+
+  cloudDocRef = db.doc("state/app");
+  let seeded = false;
+
+  cloudDocRef.onSnapshot((snap) => {
+    if (snap.metadata.hasPendingWrites) return;
+    if (!snap.exists) {
+      cloudReady = true;
+      if (!seeded) {
+        seeded = true;
+        pushToCloud();
+      }
+      return;
+    }
+    seeded = true;
+    applyCloudState(snap.data());
+    cloudReady = true;
+  }, () => {
+    updateSyncStatus("offline");
+  });
+}
+
 let calendarViewDate = new Date(); // month currently displayed
 let selectedDate = null; // "YYYY-MM-DD" or null (show all)
 
@@ -48,6 +144,7 @@ function loadTasks() {
 
 function saveTasks() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+  schedulePush();
 }
 
 function loadJSON(key, fallback) {
@@ -60,14 +157,17 @@ function loadJSON(key, fallback) {
 
 function saveSessions() {
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+  schedulePush();
 }
 
 function saveAchievements() {
   localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedAchievements));
+  schedulePush();
 }
 
 function saveCategories() {
   localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories));
+  schedulePush();
 }
 
 function getCategoryColor(name) {
@@ -249,6 +349,7 @@ function formatMinutesLabel(totalMinutes) {
 /* ===================== Priority Queue ===================== */
 function savePriorityQueue() {
   localStorage.setItem(PRIORITY_QUEUE_KEY, JSON.stringify(priorityQueueOrder));
+  schedulePush();
 }
 
 let pqDragId = null;
@@ -1185,6 +1286,7 @@ let timerBankedSeconds = loadJSON(TIMER_BANK_KEY, {});
 
 function saveTimerBank() {
   localStorage.setItem(TIMER_BANK_KEY, JSON.stringify(timerBankedSeconds));
+  schedulePush();
 }
 
 function bankCurrentTime() {
@@ -1581,6 +1683,7 @@ updateCatAccessories();
 renderSceneStars();
 applyTimeTheme();
 setInterval(applyTimeTheme, 5 * 60 * 1000);
+initCloudSync();
 
 /* ===================== Time-of-day theme ===================== */
 function computeTimeTheme() {

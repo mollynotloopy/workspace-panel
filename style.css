@@ -202,7 +202,26 @@ h1 { text-shadow: 2px 2px 0 var(--shadow-soft); }
 }
 
 /* ===== Tabs ===== */
-.tabbar { display: flex; justify-content: center; margin-bottom: 26px; }
+.tabbar { display: flex; justify-content: center; margin-bottom: 6px; }
+
+.sync-status {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 5px;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-sub);
+  margin-bottom: 20px;
+}
+.sync-status.synced { color: var(--accent); }
+.sync-status.offline { color: var(--pri-medium); }
+.sync-status .sync-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
 .tabbar-inner {
   display: inline-flex;
   gap: 4px;
