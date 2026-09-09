@@ -679,6 +679,23 @@ function cycleTaskStatus(id) {
   t.completed = next === "completed";
   t.completedOn = t.completed ? todayStr() : null;
   t.completedAt = t.completed ? new Date().toISOString() : null;
+
+  if (t.completed && timerBankedSeconds[t.id]) {
+    const minutes = Math.max(1, Math.round(timerBankedSeconds[t.id] / 60));
+    sessions.push({ id: uid(), taskId: t.id, category: t.category, date: todayStr(), minutes });
+    saveSessions();
+    delete timerBankedSeconds[t.id];
+    saveTimerBank();
+    if (timerTaskId === t.id) {
+      timerSeconds = 0;
+      document.getElementById("timer-toggle").disabled = true;
+      document.getElementById("timer-complete").style.display = "none";
+      document.getElementById("pomodoro-task-select").value = "";
+      timerTaskId = "";
+      updateTimerDisplay();
+    }
+  }
+
   saveTasks();
   renderAll();
   checkAchievements();
