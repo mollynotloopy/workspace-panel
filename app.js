@@ -414,6 +414,7 @@ function renderPriorityQueue() {
       priorityQueueOrder.splice(toIdx, 0, pqDragId);
       savePriorityQueue();
       renderPriorityQueue();
+      populateTimerTaskSelect();
     });
 
     row.addEventListener("click", () => openModal(t.id));
@@ -1378,8 +1379,13 @@ function populateTimerTaskSelect() {
   const today = todayStr();
   select.innerHTML = `<option value="">Select a task...</option>`;
   const eligible = tasks.filter(t => !t.completed && t.dueDate && t.dueDate <= today);
+  const orderIndex = new Map(priorityQueueOrder.map((id, i) => [id, i]));
   eligible
-    .sort((a, b) => (b.dueDate || "").localeCompare(a.dueDate || ""))
+    .sort((a, b) => {
+      const ia = orderIndex.has(a.id) ? orderIndex.get(a.id) : Infinity;
+      const ib = orderIndex.has(b.id) ? orderIndex.get(b.id) : Infinity;
+      return ia - ib;
+    })
     .forEach(t => {
       const opt = document.createElement("option");
       opt.value = t.id;
@@ -1720,12 +1726,12 @@ function renderAll() {
   renderStats();
   populateCategorySelects();
   renderTasks();
+  renderPriorityQueue();
   populateTimerTaskSelect();
   renderSessionList();
   renderAchievements();
   renderSummary();
   renderNextAchievement();
-  renderPriorityQueue();
 }
 
 renderAll();
