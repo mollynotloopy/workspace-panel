@@ -1323,14 +1323,53 @@ function updateBankedHint() {
   }
 }
 
+const TIMER_AUTO_PAUSE_SECONDS = 90 * 60;
+
 function syncTimerFromClock() {
   if (!timerRunning || timerStartTimestamp === null) return;
   timerSeconds = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+  if (timerSeconds >= TIMER_AUTO_PAUSE_SECONDS) {
+    autoPauseTimer();
+    return;
+  }
   updateTimerDisplay();
 }
 
+function autoPauseTimer() {
+  timerSeconds = TIMER_AUTO_PAUSE_SECONDS;
+  clearInterval(timerInterval);
+  timerRunning = false;
+  timerStartTimestamp = null;
+  bankCurrentTime();
+  document.getElementById("timer-toggle").textContent = "Start";
+  updateTimerDisplay();
+  const mins = Math.round(TIMER_AUTO_PAUSE_SECONDS / 60);
+  showSimpleToast("Timer Auto-Paused", `It ran for ${mins} min straight — still working? Your time so far is saved.`);
+}
+
+function showSimpleToast(title, message) {
+  const container = document.getElementById("toast-container");
+  const toast = document.createElement("div");
+  toast.className = "toast toast-info";
+  toast.innerHTML = `
+    <div class="toast-icon"></div>
+    <div>
+      <div class="toast-title">${escapeHtml(title)}</div>
+      <div class="toast-name">${escapeHtml(message)}</div>
+    </div>
+  `;
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("fade-out");
+    setTimeout(() => toast.remove(), 300);
+  }, 6000);
+}
+
 document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") syncTimerFromClock();
+  if (document.visibilityState === "visible") {
+    syncTimerFromClock();
+    checkDateRollover();
+  }
 });
 
 function populateTimerTaskSelect() {
@@ -1697,6 +1736,17 @@ renderSceneStars();
 applyTimeTheme();
 setInterval(applyTimeTheme, 5 * 60 * 1000);
 initCloudSync();
+
+let lastKnownDate = todayStr();
+function checkDateRollover() {
+  const current = todayStr();
+  if (current !== lastKnownDate) {
+    lastKnownDate = current;
+    renderAll();
+    checkAchievements();
+  }
+}
+setInterval(checkDateRollover, 60 * 1000);
 
 /* ===================== Time-of-day theme ===================== */
 function computeTimeTheme() {

@@ -992,6 +992,10 @@ select {
 }
 .toast-title { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--text-sub); font-weight: 600; }
 .toast-name { font-size: 14px; font-weight: 700; color: var(--text-main); }
+
+.toast.toast-info { border-color: var(--accent); }
+.toast.toast-info .toast-icon { background: var(--accent); clip-path: none; border-radius: 50%; }
+.toast.toast-info .toast-name { font-size: 12.5px; font-weight: 600; }
 @keyframes toast-in {
   from { transform: translateX(30px); opacity: 0; }
   to { transform: translateX(0); opacity: 1; }
