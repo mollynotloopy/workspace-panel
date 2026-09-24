@@ -177,24 +177,62 @@
 
     <div class="pomodoro-layout">
       <section class="card timer-card">
-        <label class="field-label" for="pomodoro-task-select">Task</label>
-        <select id="pomodoro-task-select">
-          <option value="">Select a task...</option>
-        </select>
-        <p class="timer-banked-hint" id="timer-banked-hint" style="display:none;"></p>
-
-        <div class="timer-display">
-          <span class="timer-time" id="timer-time">00:00</span>
-          <div class="timer-progress"><div class="timer-progress-bar" id="timer-progress-bar"></div></div>
-          <span class="timer-estimate" id="timer-estimate-label">Pick a task to see its estimate</span>
+        <div class="timer-mode-switch">
+          <button type="button" class="timer-mode-btn active" data-timer-mode="task">Task Timer</button>
+          <button type="button" class="timer-mode-btn" data-timer-mode="free">Free Timer</button>
         </div>
 
-        <p class="timer-alert" id="timer-alert">You've passed your estimated time — wrap it up!</p>
+        <div id="task-timer-mode">
+          <label class="field-label" for="pomodoro-task-select">Task</label>
+          <select id="pomodoro-task-select">
+            <option value="">Select a task...</option>
+          </select>
+          <p class="timer-banked-hint" id="timer-banked-hint" style="display:none;"></p>
 
-        <div class="timer-controls">
-          <button class="btn-primary" id="timer-toggle" disabled>Start</button>
-          <button class="btn-secondary" id="timer-reset">Reset</button>
-          <button class="btn-primary" id="timer-complete" style="display:none;">Complete Task</button>
+          <div class="timer-display">
+            <span class="timer-time" id="timer-time">00:00</span>
+            <div class="timer-progress"><div class="timer-progress-bar" id="timer-progress-bar"></div></div>
+            <span class="timer-estimate" id="timer-estimate-label">Pick a task to see its estimate</span>
+          </div>
+
+          <p class="timer-alert" id="timer-alert">You've passed your estimated time — wrap it up!</p>
+
+          <div class="timer-controls">
+            <button class="btn-primary" id="timer-toggle" disabled>Start</button>
+            <button class="btn-secondary" id="timer-reset">Reset</button>
+            <button class="btn-primary" id="timer-complete" style="display:none;">Complete Task</button>
+          </div>
+        </div>
+
+        <div id="free-timer-mode" style="display:none;">
+          <p class="free-timer-blurb">Just start the clock when you begin — no task needed. Name it and file it under a category when you finish.</p>
+
+          <div class="timer-display">
+            <span class="timer-time" id="free-timer-time">00:00</span>
+          </div>
+
+          <div class="timer-controls" id="free-timer-controls">
+            <button class="btn-primary" id="free-timer-toggle">Start</button>
+            <button class="btn-secondary" id="free-timer-reset">Reset</button>
+            <button class="btn-primary" id="free-timer-finish" style="display:none;">Finish Session</button>
+          </div>
+
+          <form class="free-session-form" id="free-session-form" style="display:none;">
+            <p class="free-session-summary" id="free-session-summary"></p>
+            <label class="field">
+              <span>Session name</span>
+              <input type="text" id="free-session-name" placeholder="e.g. Recruiting + course review" maxlength="80" required />
+            </label>
+            <label class="field">
+              <span>Category</span>
+              <select id="free-session-category"></select>
+            </label>
+            <div class="modal-actions">
+              <button type="button" class="btn-ghost" id="free-session-cancel">Keep timing</button>
+              <div class="spacer"></div>
+              <button type="submit" class="btn-primary">Save Session</button>
+            </div>
+          </form>
         </div>
       </section>
 

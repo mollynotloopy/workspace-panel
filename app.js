@@ -1468,9 +1468,12 @@ function renderSessionList() {
 
   list.innerHTML = todays.map(s => {
     const task = tasks.find(t => t.id === s.taskId);
+    const label = s.name
+      ? `${s.name} (${s.category})`
+      : (task ? task.title : "Deleted task");
     return `
       <div class="session-item">
-        <span class="session-task">${escapeHtml(task ? task.title : "Deleted task")}</span>
+        <span class="session-task">${escapeHtml(label)}</span>
         <span class="session-minutes">${s.minutes} min</span>
       </div>
     `;
@@ -1566,6 +1569,155 @@ document.getElementById("timer-complete").addEventListener("click", () => {
   renderAll();
   checkAchievements();
 });
+
+/* ===================== Free timer ===================== */
+const FREE_TIMER_KEY = "molly-panel-free-timer-v1";
+const FREE_TIMER_AUTO_PAUSE_SECONDS = 3 * 60 * 60;
+let freeTimer = loadJSON(FREE_TIMER_KEY, null);
+if (!freeTimer || typeof freeTimer.accumulated !== "number") freeTimer = { accumulated: 0, startedAt: null };
+let freeTimerInterval = null;
+let freeResetArmed = null;
+
+function saveFreeTimer() {
+  localStorage.setItem(FREE_TIMER_KEY, JSON.stringify(freeTimer));
+}
+
+function freeElapsedSeconds() {
+  const live = freeTimer.startedAt ? Math.floor((Date.now() - freeTimer.startedAt) / 1000) : 0;
+  return freeTimer.accumulated + live;
+}
+
+function renderFreeTimer() {
+  const elapsed = freeElapsedSeconds();
+  document.getElementById("free-timer-time").textContent = formatTimer(elapsed);
+  document.getElementById("free-timer-toggle").textContent =
+    freeTimer.startedAt ? "Pause" : (freeTimer.accumulated > 0 ? "Resume" : "Start");
+  document.getElementById("free-timer-finish").style.display = elapsed > 0 ? "inline-block" : "none";
+}
+
+function tickFreeTimer() {
+  if (!freeTimer.startedAt) return;
+  if (freeElapsedSeconds() >= FREE_TIMER_AUTO_PAUSE_SECONDS) {
+    clearInterval(freeTimerInterval);
+    freeTimer = { accumulated: FREE_TIMER_AUTO_PAUSE_SECONDS, startedAt: null };
+    saveFreeTimer();
+    renderFreeTimer();
+    showSimpleToast("Free Timer Auto-Paused", `It ran for ${FREE_TIMER_AUTO_PAUSE_SECONDS / 3600} hours straight — still working? Your time so far is kept.`);
+    return;
+  }
+  renderFreeTimer();
+}
+
+function startFreeTimerInterval() {
+  clearInterval(freeTimerInterval);
+  freeTimerInterval = setInterval(tickFreeTimer, 1000);
+}
+
+function pauseFreeTimer() {
+  if (!freeTimer.startedAt) return;
+  freeTimer = { accumulated: freeElapsedSeconds(), startedAt: null };
+  clearInterval(freeTimerInterval);
+  saveFreeTimer();
+}
+
+function populateFreeCategorySelect() {
+  const sel = document.getElementById("free-session-category");
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = "";
+  categories.forEach(c => {
+    const opt = document.createElement("option");
+    opt.value = c.name;
+    opt.textContent = c.name;
+    sel.appendChild(opt);
+  });
+  if (current && categories.some(c => c.name === current)) sel.value = current;
+}
+
+document.querySelectorAll(".timer-mode-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const mode = btn.dataset.timerMode;
+    document.querySelectorAll(".timer-mode-btn").forEach(b => b.classList.toggle("active", b === btn));
+    document.getElementById("task-timer-mode").style.display = mode === "task" ? "block" : "none";
+    document.getElementById("free-timer-mode").style.display = mode === "free" ? "block" : "none";
+  });
+});
+
+document.getElementById("free-timer-toggle").addEventListener("click", () => {
+  if (freeTimer.startedAt) {
+    pauseFreeTimer();
+  } else {
+    freeTimer.startedAt = Date.now();
+    saveFreeTimer();
+    startFreeTimerInterval();
+  }
+  document.getElementById("free-session-form").style.display = "none";
+  renderFreeTimer();
+});
+
+document.getElementById("free-timer-reset").addEventListener("click", (e) => {
+  const btn = e.currentTarget;
+  if (freeElapsedSeconds() > 0 && !freeResetArmed) {
+    btn.textContent = "Sure? Click again";
+    freeResetArmed = setTimeout(() => {
+      freeResetArmed = null;
+      btn.textContent = "Reset";
+    }, 3000);
+    return;
+  }
+  clearTimeout(freeResetArmed);
+  freeResetArmed = null;
+  btn.textContent = "Reset";
+  clearInterval(freeTimerInterval);
+  freeTimer = { accumulated: 0, startedAt: null };
+  saveFreeTimer();
+  document.getElementById("free-session-form").style.display = "none";
+  renderFreeTimer();
+});
+
+document.getElementById("free-timer-finish").addEventListener("click", () => {
+  pauseFreeTimer();
+  const minutes = Math.max(1, Math.round(freeTimer.accumulated / 60));
+  document.getElementById("free-session-summary").textContent = `You timed ${formatMinutesLabel(minutes)} — nice work!`;
+  populateFreeCategorySelect();
+  const form = document.getElementById("free-session-form");
+  form.style.display = "block";
+  renderFreeTimer();
+  document.getElementById("free-session-name").focus();
+});
+
+document.getElementById("free-session-cancel").addEventListener("click", () => {
+  document.getElementById("free-session-form").style.display = "none";
+});
+
+document.getElementById("free-session-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const name = document.getElementById("free-session-name").value.trim();
+  const category = document.getElementById("free-session-category").value;
+  if (!name || !category) return;
+  const minutes = Math.max(1, Math.round(freeTimer.accumulated / 60));
+
+  sessions.push({ id: uid(), taskId: null, name, category, date: todayStr(), minutes });
+  saveSessions();
+
+  freeTimer = { accumulated: 0, startedAt: null };
+  saveFreeTimer();
+  document.getElementById("free-session-name").value = "";
+  document.getElementById("free-session-form").style.display = "none";
+  renderFreeTimer();
+  renderAll();
+  checkAchievements();
+});
+
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") tickFreeTimer();
+});
+
+renderFreeTimer();
+if (freeTimer.startedAt) {
+  startFreeTimerInterval();
+  tickFreeTimer();
+}
 
 /* ===================== Weekly summary ===================== */
 function getWeekRange(offsetWeeks) {
