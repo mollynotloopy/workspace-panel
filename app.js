@@ -91,9 +91,9 @@ function applyCloudState(data) {
   if (Array.isArray(data.priorityQueueOrder)) { priorityQueueOrder = data.priorityQueueOrder; localStorage.setItem(PRIORITY_QUEUE_KEY, JSON.stringify(priorityQueueOrder)); }
   if (typeof data.tasksCreatedCount === "number") { tasksCreatedCount = data.tasksCreatedCount; localStorage.setItem(TASKS_CREATED_KEY, JSON.stringify(tasksCreatedCount)); }
   if (data.timerBankedSeconds) { timerBankedSeconds = data.timerBankedSeconds; localStorage.setItem(TIMER_BANK_KEY, JSON.stringify(timerBankedSeconds)); }
-  cloudApplyingRemote = false;
   renderAll();
   checkAchievements();
+  cloudApplyingRemote = false;
   updateSyncStatus("synced");
 }
 
@@ -362,9 +362,10 @@ function renderPriorityQueue() {
   const eligible = tasks.filter(t => !t.completed && t.dueDate && t.dueDate <= today);
   const eligibleIds = new Set(eligible.map(t => t.id));
 
+  const beforeOrder = priorityQueueOrder.join("|");
   priorityQueueOrder = priorityQueueOrder.filter(id => eligibleIds.has(id));
   eligible.forEach(t => { if (!priorityQueueOrder.includes(t.id)) priorityQueueOrder.push(t.id); });
-  savePriorityQueue();
+  if (priorityQueueOrder.join("|") !== beforeOrder) savePriorityQueue();
 
   const byId = new Map(eligible.map(t => [t.id, t]));
   const ordered = priorityQueueOrder.map(id => byId.get(id)).filter(Boolean);
@@ -819,6 +820,17 @@ overlay.addEventListener("click", (e) => { if (e.target === overlay) closeModal(
 document.getElementById("delete-task-btn").addEventListener("click", () => {
   const id = document.getElementById("task-id").value;
   if (!id) return;
+  const target = tasks.find(t => t.id === id);
+  if (target && target.recurringId) {
+    tasks.forEach(t => {
+      if (t.recurringId === target.recurringId && t.id !== id) {
+        t.recurringExcludedDates = t.recurringExcludedDates || [];
+        if (!t.recurringExcludedDates.includes(target.dueDate)) {
+          t.recurringExcludedDates.push(target.dueDate);
+        }
+      }
+    });
+  }
   tasks = tasks.filter(t => t.id !== id);
   sessions = sessions.filter(s => s.taskId !== id);
   saveTasks();
@@ -930,6 +942,7 @@ form.addEventListener("submit", (e) => {
     if (!rec) return;
 
     const recurringId = isSeriesEdit ? existingTask.recurringId : uid();
+    const excludedDates = isSeriesEdit ? (existingTask.recurringExcludedDates || []) : [];
     const recurringMeta = {
       recurringId,
       recurringFrequency: rec.frequency,
@@ -937,6 +950,7 @@ form.addEventListener("submit", (e) => {
       recurringStart: rec.start,
       recurringUntil: rec.until,
       recurringTime: rec.time,
+      recurringExcludedDates: excludedDates,
     };
 
     if (isSeriesEdit) {
@@ -944,7 +958,7 @@ form.addEventListener("submit", (e) => {
       tasks.filter(t => t.recurringId === recurringId).forEach(t => { existingByDate[t.dueDate] = t; });
 
       let newOccurrenceCount = 0;
-      const seriesTasks = rec.dates.map(dateStr => {
+      const seriesTasks = rec.dates.filter(dateStr => !excludedDates.includes(dateStr)).map(dateStr => {
         const prior = existingByDate[dateStr];
         if (prior) {
           Object.assign(prior, baseData, recurringMeta, { dueDate: dateStr, dueTime: rec.time });
