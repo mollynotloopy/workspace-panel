@@ -125,8 +125,17 @@ async function initCloudSync() {
       }
       return;
     }
+    const remote = snap.data() || {};
+    const remoteEmpty = !(remote.tasks || []).length && !(remote.sessions || []).length;
+    const localHasData = tasks.length > 0 || sessions.length > 0;
+    if (!seeded && remoteEmpty && localHasData) {
+      seeded = true;
+      cloudReady = true;
+      pushToCloud();
+      return;
+    }
     seeded = true;
-    applyCloudState(snap.data());
+    applyCloudState(remote);
     cloudReady = true;
   }, () => {
     updateSyncStatus("offline");
