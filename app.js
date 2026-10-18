@@ -91,9 +91,11 @@ function applyCloudState(data) {
   if (Array.isArray(data.priorityQueueOrder)) { priorityQueueOrder = data.priorityQueueOrder; localStorage.setItem(PRIORITY_QUEUE_KEY, JSON.stringify(priorityQueueOrder)); }
   if (typeof data.tasksCreatedCount === "number") { tasksCreatedCount = data.tasksCreatedCount; localStorage.setItem(TASKS_CREATED_KEY, JSON.stringify(tasksCreatedCount)); }
   if (data.timerBankedSeconds) { timerBankedSeconds = data.timerBankedSeconds; localStorage.setItem(TIMER_BANK_KEY, JSON.stringify(timerBankedSeconds)); }
+  const migrated = migrateFreeSessions();
   renderAll();
   checkAchievements();
   cloudApplyingRemote = false;
+  if (migrated) schedulePush();
   updateSyncStatus("synced");
 }
 
@@ -1358,6 +1360,7 @@ function autoPauseTimer() {
   bankCurrentTime();
   document.getElementById("timer-toggle").textContent = "Start";
   updateTimerDisplay();
+  saveTaskTimerState();
   const mins = Math.round(TIMER_AUTO_PAUSE_SECONDS / 60);
   showSimpleToast("Timer Auto-Paused", `It ran for ${mins} min straight — still working? Your time so far is saved.`);
 }
@@ -1511,6 +1514,7 @@ document.getElementById("pomodoro-task-select").addEventListener("change", (e) =
   document.getElementById("timer-toggle").disabled = !timerTaskId;
   document.getElementById("timer-complete").style.display = timerSeconds > 0 ? "inline-block" : "none";
   updateTimerDisplay();
+  saveTaskTimerState();
 });
 
 document.getElementById("timer-toggle").addEventListener("click", () => {
@@ -1527,9 +1531,11 @@ document.getElementById("timer-toggle").addEventListener("click", () => {
     btn.textContent = "Start";
     clearInterval(timerInterval);
     timerSeconds = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+    timerStartTimestamp = null;
     bankCurrentTime();
     updateTimerDisplay();
   }
+  saveTaskTimerState();
 });
 
 document.getElementById("timer-reset").addEventListener("click", () => {
@@ -1546,6 +1552,7 @@ document.getElementById("timer-reset").addEventListener("click", () => {
   document.getElementById("timer-alert").classList.remove("show");
   document.getElementById("timer-complete").style.display = "none";
   updateTimerDisplay();
+  saveTaskTimerState();
 });
 
 document.getElementById("timer-complete").addEventListener("click", () => {
@@ -1579,6 +1586,7 @@ document.getElementById("timer-complete").addEventListener("click", () => {
   document.getElementById("timer-complete").style.display = "none";
   document.getElementById("pomodoro-task-select").value = "";
   updateTimerDisplay();
+  saveTaskTimerState();
 
   renderAll();
   checkAchievements();
@@ -1711,7 +1719,14 @@ document.getElementById("free-session-form").addEventListener("submit", (e) => {
   if (!name || !category) return;
   const minutes = Math.max(1, Math.round(freeTimer.accumulated / 60));
 
-  sessions.push({ id: uid(), taskId: null, name, category, date: todayStr(), minutes });
+  const today = todayStr();
+  const task = makeCompletedFreeTask(name, category, today, new Date().toISOString());
+  tasks.push(task);
+  tasksCreatedCount++;
+  saveTasks();
+  saveTasksCreatedCount();
+
+  sessions.push({ id: uid(), taskId: task.id, name, category, date: today, minutes });
   saveSessions();
 
   freeTimer = { accumulated: 0, startedAt: null };
@@ -1732,6 +1747,127 @@ if (freeTimer.startedAt) {
   startFreeTimerInterval();
   tickFreeTimer();
 }
+
+function makeCompletedFreeTask(name, category, dateStr, completedAtIso) {
+  return {
+    id: uid(),
+    title: name,
+    category,
+    priority: "medium",
+    estimate: "",
+    link: "",
+    notes: "Logged from the Free Timer",
+    dueDate: dateStr,
+    dueTime: "",
+    completed: true,
+    status: "completed",
+    completedOn: dateStr,
+    completedAt: completedAtIso,
+    fromFreeTimer: true,
+  };
+}
+
+function migrateFreeSessions() {
+  let changed = false;
+  sessions.forEach(s => {
+    if (!s.taskId && s.name) {
+      const task = makeCompletedFreeTask(s.name, s.category, s.date, new Date(s.date + "T12:00:00").toISOString());
+      tasks.push(task);
+      tasksCreatedCount++;
+      s.taskId = task.id;
+      changed = true;
+    }
+  });
+  if (changed) {
+    saveTasks();
+    saveTasksCreatedCount();
+    saveSessions();
+  }
+  return changed;
+}
+
+/* ===================== Task timer persistence + cross-tab sync ===================== */
+const TASK_TIMER_KEY = "molly-panel-task-timer-v1";
+
+function saveTaskTimerState() {
+  localStorage.setItem(TASK_TIMER_KEY, JSON.stringify({
+    taskId: timerTaskId,
+    running: timerRunning,
+    startTimestamp: timerStartTimestamp,
+    seconds: timerSeconds,
+  }));
+}
+
+function applyTaskTimerState() {
+  const s = loadJSON(TASK_TIMER_KEY, null);
+  const today = todayStr();
+  const toggleBtn = document.getElementById("timer-toggle");
+  const completeBtn = document.getElementById("timer-complete");
+  const select = document.getElementById("pomodoro-task-select");
+
+  clearInterval(timerInterval);
+  timerRunning = false;
+  timerStartTimestamp = null;
+  timerAlerted = false;
+  document.getElementById("timer-alert").classList.remove("show");
+
+  const valid = s && s.taskId && tasks.some(t => t.id === s.taskId && !t.completed && t.dueDate && t.dueDate <= today);
+  if (!valid) {
+    timerTaskId = "";
+    timerSeconds = 0;
+    select.value = "";
+    toggleBtn.disabled = true;
+    toggleBtn.textContent = "Start";
+    completeBtn.style.display = "none";
+    updateTimerDisplay();
+    return;
+  }
+
+  timerTaskId = s.taskId;
+  select.value = s.taskId;
+  toggleBtn.disabled = false;
+
+  if (s.running && s.startTimestamp) {
+    timerRunning = true;
+    timerStartTimestamp = s.startTimestamp;
+    timerSeconds = Math.floor((Date.now() - timerStartTimestamp) / 1000);
+    toggleBtn.textContent = "Pause";
+    completeBtn.style.display = "inline-block";
+    timerInterval = setInterval(syncTimerFromClock, 1000);
+    syncTimerFromClock();
+  } else {
+    timerSeconds = s.seconds || timerBankedSeconds[s.taskId] || 0;
+    toggleBtn.textContent = "Start";
+    completeBtn.style.display = timerSeconds > 0 ? "inline-block" : "none";
+  }
+  updateTimerDisplay();
+}
+
+function reloadStateFromStorage() {
+  tasks = loadTasks();
+  sessions = loadJSON(SESSIONS_KEY, []);
+  unlockedAchievements = loadJSON(ACHIEVEMENTS_KEY, {});
+  categories = loadJSON(CATEGORIES_KEY, DEFAULT_CATEGORIES);
+  priorityQueueOrder = loadJSON(PRIORITY_QUEUE_KEY, []);
+  tasksCreatedCount = loadJSON(TASKS_CREATED_KEY, tasks.length);
+  timerBankedSeconds = loadJSON(TIMER_BANK_KEY, {});
+  renderAll();
+  applyTaskTimerState();
+}
+
+window.addEventListener("storage", (e) => {
+  if (e.key === TASK_TIMER_KEY) {
+    applyTaskTimerState();
+  } else if (e.key === FREE_TIMER_KEY) {
+    const s = loadJSON(FREE_TIMER_KEY, null);
+    freeTimer = (s && typeof s.accumulated === "number") ? s : { accumulated: 0, startedAt: null };
+    clearInterval(freeTimerInterval);
+    if (freeTimer.startedAt) startFreeTimerInterval();
+    renderFreeTimer();
+  } else if ([STORAGE_KEY, SESSIONS_KEY, ACHIEVEMENTS_KEY, CATEGORIES_KEY, PRIORITY_QUEUE_KEY, TASKS_CREATED_KEY, TIMER_BANK_KEY].includes(e.key) || e.key === null) {
+    reloadStateFromStorage();
+  }
+});
 
 /* ===================== Weekly summary ===================== */
 function getWeekRange(offsetWeeks) {
@@ -1900,7 +2036,12 @@ function renderAll() {
   renderNextAchievement();
 }
 
+migrateFreeSessions();
 renderAll();
+applyTaskTimerState();
+if (freeTimer.startedAt && !timerRunning) {
+  document.querySelector('.timer-mode-btn[data-timer-mode="free"]').click();
+}
 checkAchievements();
 initCatDrag();
 updateCatAccessories();
