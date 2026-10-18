@@ -683,7 +683,10 @@ function renderTaskItem(t, showCategory) {
     const catColor = getCategoryColor(t.category);
     metaParts.push(`<span class="recurring-badge" style="color:${catColor}">${escapeHtml(t.category)}</span>`);
   }
-  if (t.recurringId) metaParts.push(`<span class="recurring-badge">↻ Recurring</span>`);
+  if (t.recurringId) {
+    const changed = Object.keys(t.recurringOverrides || {});
+    metaParts.push(`<span class="recurring-badge"${changed.length ? ` title="Edited separately: ${changed.join(", ")}"` : ""}>↻ Recurring${changed.length ? " · edited" : ""}</span>`);
+  }
   if (t.link) metaParts.push(`<a href="${escapeAttr(t.link)}" target="_blank" rel="noopener">Link</a>`);
 
   const today = todayStr();
@@ -695,7 +698,7 @@ function renderTaskItem(t, showCategory) {
   if (t.estimate) sideParts.push(`<div class="task-estimate">${t.estimate} min</div>`);
 
   let snoozeTarget = null;
-  if (!t.completed && !t.recurringId && t.dueDate && t.dueDate <= today) {
+  if (!t.completed && t.dueDate && t.dueDate <= today) {
     snoozeTarget = t.dueDate < today ? { label: "→ Today", date: today } : { label: "→ Tomorrow", date: addDaysStr(1) };
     sideParts.push(`<button type="button" class="snooze-btn" title="Reschedule">${snoozeTarget.label}</button>`);
   }
@@ -724,6 +727,7 @@ function renderTaskItem(t, showCategory) {
     snoozeBtn.addEventListener("click", (e) => {
       e.stopPropagation();
       const snap = snapshotState();
+      if (t.recurringId) markOccurrenceOverrides(t, { ...t, dueDate: snoozeTarget.date });
       t.dueDate = snoozeTarget.date;
       saveTasks();
       renderAll();
@@ -846,6 +850,33 @@ function resetRecurringUI() {
   recurringError.style.display = "none";
 }
 
+let editScope = "none";
+
+function setEditScope(scope) {
+  editScope = scope;
+  document.querySelectorAll(".edit-scope-btn").forEach(b => b.classList.toggle("active", b.dataset.scope === scope));
+  const series = scope === "series";
+  recurringSection.style.display = series ? "block" : "none";
+  document.getElementById("series-edit-note").style.display = series ? "block" : "none";
+  dueDateRow.style.display = series ? "none" : "grid";
+  document.getElementById("edit-scope-hint").textContent = series
+    ? "Changes apply to every occurrence. Anything you edited on a single day is kept."
+    : "Changes apply only to this day's task, like a note or moving just this date.";
+}
+
+document.querySelectorAll(".edit-scope-btn").forEach(btn => {
+  btn.addEventListener("click", () => setEditScope(btn.dataset.scope));
+});
+
+function markOccurrenceOverrides(t, data) {
+  t.recurringOrigDate = t.recurringOrigDate || t.dueDate;
+  const ov = t.recurringOverrides || {};
+  ["title", "category", "priority", "estimate", "link", "notes", "dueDate", "dueTime"].forEach(k => {
+    if (String(t[k] ?? "") !== String(data[k] ?? "")) ov[k] = true;
+  });
+  t.recurringOverrides = ov;
+}
+
 function openModal(taskId = null) {
   form.reset();
   resetRecurringUI();
@@ -863,8 +894,10 @@ function openModal(taskId = null) {
   document.getElementById("delete-series-btn").style.display = isSeriesEdit ? "inline-block" : "none";
 
   document.getElementById("recurring-checkbox-row").style.display = isSeriesEdit ? "none" : "flex";
-  document.getElementById("series-edit-note").style.display = isSeriesEdit ? "block" : "none";
+  document.getElementById("series-edit-note").style.display = "none";
   recurringSection.style.display = (!taskId || isSeriesEdit) ? "block" : "none";
+  document.getElementById("edit-scope").style.display = isSeriesEdit ? "block" : "none";
+  editScope = isSeriesEdit ? "this" : "none";
 
   if (t) {
     document.getElementById("modal-title").textContent = "Edit Task";
@@ -889,6 +922,7 @@ function openModal(taskId = null) {
       document.getElementById("recurring-start").value = t.recurringStart || t.dueDate || "";
       document.getElementById("recurring-until").value = t.recurringUntil || "";
       document.getElementById("recurring-time").value = t.recurringTime || t.dueTime || "";
+      setEditScope("this");
     }
   } else {
     document.getElementById("modal-title").textContent = "New Task";
@@ -1012,7 +1046,7 @@ form.addEventListener("submit", (e) => {
 
   const existingTask = id ? tasks.find(x => x.id === id) : null;
   const wasCompleted = existingTask ? existingTask.completed : false;
-  const isSeriesEdit = !!(existingTask && existingTask.recurringId);
+  const isSeriesEdit = !!(existingTask && existingTask.recurringId) && editScope === "series";
   const isNewRecurring = !id && recurringCheckbox.checked;
   let newTaskRef = null;
 
@@ -1034,13 +1068,18 @@ form.addEventListener("submit", (e) => {
 
     if (isSeriesEdit) {
       const existingByDate = {};
-      tasks.filter(t => t.recurringId === recurringId).forEach(t => { existingByDate[t.dueDate] = t; });
+      tasks.filter(t => t.recurringId === recurringId).forEach(t => { existingByDate[t.recurringOrigDate || t.dueDate] = t; });
 
       let newOccurrenceCount = 0;
       const seriesTasks = rec.dates.filter(dateStr => !excludedDates.includes(dateStr)).map(dateStr => {
         const prior = existingByDate[dateStr];
         if (prior) {
-          Object.assign(prior, baseData, recurringMeta, { dueDate: dateStr, dueTime: rec.time });
+          const ov = prior.recurringOverrides || {};
+          const merged = { ...baseData };
+          Object.keys(ov).forEach(k => { delete merged[k]; });
+          Object.assign(prior, merged, recurringMeta);
+          if (!ov.dueDate) prior.dueDate = dateStr;
+          if (!ov.dueTime) prior.dueTime = rec.time;
           return prior;
         }
         newOccurrenceCount++;
@@ -1082,6 +1121,7 @@ form.addEventListener("submit", (e) => {
     };
 
     if (id) {
+      if (existingTask.recurringId) markOccurrenceOverrides(existingTask, data);
       Object.assign(existingTask, data);
     } else {
       newTaskRef = {
@@ -2223,7 +2263,8 @@ function removeTasksAndRecord(ids) {
     tasks.forEach(sib => {
       if (sib.recurringId === removed.recurringId && !idSet.has(sib.id)) {
         sib.recurringExcludedDates = sib.recurringExcludedDates || [];
-        if (!sib.recurringExcludedDates.includes(removed.dueDate)) sib.recurringExcludedDates.push(removed.dueDate);
+        const gone = removed.recurringOrigDate || removed.dueDate;
+        if (!sib.recurringExcludedDates.includes(gone)) sib.recurringExcludedDates.push(gone);
       }
     });
   });
