@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css" />
+<link rel="stylesheet" href="style.css?v=5" />
 </head>
 <body>
 
@@ -32,6 +32,9 @@
       <button class="tab" data-tab="pomodoro">Timer</button>
       <button class="tab" data-tab="achievements">Achievements</button>
     </div>
+    <button class="settings-btn" id="open-settings" title="Settings, backup & shortcuts (?)" aria-label="Settings">
+      <span class="settings-gear">&#9881;</span><span class="settings-dot" id="settings-dot" style="display:none;"></span>
+    </button>
   </nav>
   <div class="sync-status" id="sync-status" style="display:none;"></div>
 
@@ -42,6 +45,13 @@
     <header class="greeting">
       <p class="greeting-eyebrow" id="greeting-date"></p>
       <h1 id="greeting-text">Hello, Molly <span class="wave">:)</span></h1>
+      <div class="day-progress" id="day-progress">
+        <div class="day-progress-top">
+          <span id="day-progress-label"></span>
+          <span class="day-streak" id="day-streak"></span>
+        </div>
+        <div class="day-progress-bar"><div class="day-progress-fill" id="day-progress-fill"></div></div>
+      </div>
     </header>
 
     <!-- Stats -->
@@ -99,8 +109,9 @@
         <section class="card priority-queue-card">
           <div class="priority-queue-header">
             <h2>Priority Queue</h2>
-            <span class="priority-queue-hint">Drag to rank</span>
+            <button type="button" class="pq-sort-btn" id="pq-auto-sort" title="Sort by priority, then oldest due date">Auto-sort</button>
           </div>
+          <p class="priority-queue-hint">Drag to rank &middot; &#9654; starts the timer</p>
           <div class="priority-queue-list" id="priority-queue-list"></div>
           <div class="priority-queue-empty" id="priority-queue-empty" style="display:none;">Nothing due today or overdue ✨</div>
         </section>
@@ -111,13 +122,28 @@
         <div class="tasks-header">
           <h2 id="tasks-title">All Tasks</h2>
           <div class="tasks-controls">
-            <select id="category-filter">
-              <option value="all">All categories</option>
-            </select>
             <button class="btn-secondary" id="toggle-completed-btn">Show Completed</button>
             <button class="btn-primary" id="add-task-btn">+ Add Task</button>
           </div>
         </div>
+
+        <div class="tasks-filters">
+          <input type="search" id="task-search" class="task-search" placeholder="Search tasks  ( / )" autocomplete="off" />
+          <select id="category-filter">
+            <option value="all">All categories</option>
+          </select>
+          <select id="status-filter">
+            <option value="all">Any status</option>
+            <option value="not-started">Not started</option>
+            <option value="ongoing">Ongoing</option>
+          </select>
+        </div>
+
+        <form class="quick-add" id="quick-add-form" autocomplete="off">
+          <input type="text" id="quick-add-input" placeholder="Quick add:  Email prof tomorrow !high #Courses 30m   (press Enter)" />
+          <button type="submit" class="btn-primary">Add</button>
+        </form>
+        <div class="quick-add-preview" id="quick-add-preview"></div>
 
         <div id="tasks-categories" class="tasks-categories"></div>
       </section>
@@ -164,6 +190,15 @@
           <div id="summary-extra" class="summary-extra"></div>
         </section>
       </div>
+
+      <section class="card daily-card">
+        <div class="daily-card-head">
+          <h2>Daily Focus</h2>
+          <span class="daily-bars-total" id="daily-bars-total"></span>
+        </div>
+        <div class="daily-bars" id="daily-bars"></div>
+        <p class="daily-hint">Bars show tracked time per day; the check mark counts tasks completed.</p>
+      </section>
     </section>
 
   </main>
@@ -302,6 +337,13 @@
           <input type="time" id="task-due-time" />
         </label>
       </div>
+      <div class="date-quick" id="date-quick">
+        <button type="button" data-qd="0">Today</button>
+        <button type="button" data-qd="1">Tomorrow</button>
+        <button type="button" data-qd="mon">Next Mon</button>
+        <button type="button" data-qd="7">+1 week</button>
+        <button type="button" data-qd="none">No date</button>
+      </div>
 
       <div id="recurring-section">
         <p class="series-note" id="series-edit-note" style="display:none;">Editing this series — changes apply to every occurrence.</p>
@@ -393,6 +435,49 @@
   </div>
 </div>
 
+<!-- ===== Settings / backup modal ===== -->
+<div class="modal-overlay" id="settings-overlay">
+  <div class="modal settings-modal">
+    <div class="modal-header">
+      <h2>Settings &amp; Backup</h2>
+      <button class="icon-btn" id="settings-close">&times;</button>
+    </div>
+
+    <section class="settings-section">
+      <h3>Backup your data</h3>
+      <p class="settings-note" id="backup-status"></p>
+      <div class="settings-row">
+        <button type="button" class="btn-primary" id="export-backup-btn">Export backup</button>
+        <button type="button" class="btn-secondary" id="import-backup-btn">Import backup</button>
+        <input type="file" id="import-backup-file" accept=".json,application/json" style="display:none;" />
+      </div>
+      <p class="settings-note" id="import-note" style="display:none;"></p>
+      <textarea id="backup-fallback" class="backup-fallback" rows="5" style="display:none;" readonly></textarea>
+    </section>
+
+    <section class="settings-section">
+      <h3>Keyboard shortcuts</h3>
+      <div class="shortcut-grid">
+        <span><kbd>n</kbd> New task (full form)</span>
+        <span><kbd>q</kbd> Quick add</span>
+        <span><kbd>/</kbd> Search tasks</span>
+        <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Workspace / Timer / Achievements</span>
+        <span><kbd>?</kbd> This panel</span>
+        <span><kbd>Esc</kbd> Close any window</span>
+      </div>
+    </section>
+
+    <section class="settings-section">
+      <h3>Quick-add cheat sheet</h3>
+      <p class="settings-note">Type a task and add details inline:
+        <code>!high</code> <code>!low</code> <code>!ts</code> priority &middot;
+        <code>#Courses</code> category &middot;
+        <code>30m</code> <code>1.5h</code> estimate &middot;
+        <code>today</code> <code>tomorrow</code> <code>friday</code> <code>next week</code> <code>in 3 days</code> <code>10/25</code> due date.</p>
+    </section>
+  </div>
+</div>
+
 <!-- ===== Achievement toasts ===== -->
 <div id="toast-container" class="toast-container"></div>
 
@@ -423,6 +508,6 @@
   <img id="cat-img" src="assets/cat-mascot.png" alt="pixel cat mascot" draggable="false" />
 </div>
 
-<script src="app.js"></script>
+<script src="app.js?v=5"></script>
 </body>
 </html>

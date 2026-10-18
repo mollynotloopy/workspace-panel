@@ -339,6 +339,17 @@ function renderStats() {
   document.getElementById("stat-time").textContent = timeLabel;
   document.getElementById("stat-worked").textContent = workedLabel;
   document.getElementById("stat-done").textContent = completedToday;
+
+  const overdueOpen = incomplete.filter(t => t.dueDate && t.dueDate < today).length;
+  const planned = completedToday + awaiting + overdueOpen;
+  document.getElementById("day-progress-label").textContent = planned === 0
+    ? "Nothing on the list today"
+    : `${completedToday} of ${planned} done today`;
+  document.getElementById("day-progress-fill").style.width = planned === 0 ? "0%" : Math.round((completedToday / planned) * 100) + "%";
+  const streak = computeDayStreak();
+  const streakEl = document.getElementById("day-streak");
+  streakEl.textContent = streak >= 2 ? `${streak}-day streak` : "";
+  streakEl.style.display = streak >= 2 ? "inline-block" : "none";
 }
 
 function formatMinutesLabel(totalMinutes) {
@@ -355,6 +366,8 @@ function savePriorityQueue() {
 }
 
 let pqDragId = null;
+
+const PQ_SHORT = { high: "HIGH", medium: "MED", low: "LOW", "time-sensitive": "TIME" };
 
 function renderPriorityQueue() {
   const list = document.getElementById("priority-queue-list");
@@ -378,6 +391,7 @@ function renderPriorityQueue() {
   ordered.forEach((t, i) => {
     const pMeta = PRIORITY_META[t.priority] || PRIORITY_META.medium;
     const isOverdue = t.dueDate < today;
+    const lateDays = Math.round((new Date(today + "T00:00:00") - new Date(t.dueDate + "T00:00:00")) / 86400000);
     const dateLabel = new Date(t.dueDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
 
     const row = document.createElement("div");
@@ -386,11 +400,15 @@ function renderPriorityQueue() {
     row.dataset.id = t.id;
     row.innerHTML = `
       <span class="pq-rank">${i + 1}</span>
-      <span class="pq-handle">⠿</span>
       <span class="pq-title" title="${escapeAttr(t.title)}">${escapeHtml(t.title)}</span>
-      <span class="pq-due${isOverdue ? " overdue" : ""}">${isOverdue ? "Overdue · " : ""}${dateLabel}</span>
-      <span class="pq-priority" style="background:${pMeta.color}">${pMeta.label}</span>
+      <span class="pq-due${isOverdue ? " overdue" : ""}" title="${dateLabel}">${isOverdue ? lateDays + "d late" : "today"}</span>
+      <span class="pq-priority" style="background:${pMeta.color}" title="${pMeta.label}">${PQ_SHORT[t.priority] || "MED"}</span>
+      <button type="button" class="pq-start" title="Start the timer on this task">&#9654;</button>
     `;
+    row.querySelector(".pq-start").addEventListener("click", (e) => {
+      e.stopPropagation();
+      startTimerForTask(t.id);
+    });
 
     row.addEventListener("dragstart", (e) => {
       pqDragId = t.id;
@@ -488,21 +506,52 @@ document.getElementById("toggle-completed-btn").addEventListener("click", () => 
   renderTasks();
 });
 
+function groupBlock({ key, label, count, headingClass = "", headingStyle = "", dotStyle = "", dotClass = "", items, showCategory = false, actionsHtml = "" }) {
+  const block = document.createElement("div");
+  block.className = "category-block" + (collapsedGroups.has(key) ? " collapsed" : "");
+  block.innerHTML = `
+    <div class="category-heading ${headingClass}" style="${headingStyle}">
+      <span class="group-caret">&#9662;</span>
+      <span class="category-dot ${dotClass}" style="${dotStyle}"></span>
+      ${label}
+      <span class="category-count">${count}</span>
+      <span class="group-actions">${actionsHtml}</span>
+    </div>
+    <div class="task-list"></div>
+  `;
+  const list = block.querySelector(".task-list");
+  items.forEach(t => list.appendChild(renderTaskItem(t, showCategory)));
+  block.querySelector(".category-heading").addEventListener("click", () => {
+    if (collapsedGroups.has(key)) collapsedGroups.delete(key); else collapsedGroups.add(key);
+    localStorage.setItem(COLLAPSED_KEY, JSON.stringify(Array.from(collapsedGroups)));
+    block.classList.toggle("collapsed", collapsedGroups.has(key));
+  });
+  return block;
+}
+
 function renderTasks() {
   const container = document.getElementById("tasks-categories");
   const filterCat = document.getElementById("category-filter").value;
   const titleEl = document.getElementById("tasks-title");
+  const searching = searchTerm.length > 0;
 
-  titleEl.textContent = selectedDate
-    ? `Tasks for ${new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric" })}`
-    : "All Tasks";
+  titleEl.textContent = searching
+    ? "Search results"
+    : selectedDate
+      ? `Tasks for ${new Date(selectedDate + "T00:00:00").toLocaleDateString(undefined, { month: "long", day: "numeric" })}`
+      : "All Tasks";
 
   const today = todayStr();
   const viewingToday = selectedDate === today;
-  const showOverdue = !selectedDate || viewingToday;
+  const showOverdue = searching || !selectedDate || viewingToday;
 
   let visible = tasks.slice();
-  if (selectedDate) {
+  if (searching) {
+    visible = visible.filter(t =>
+      (t.title || "").toLowerCase().includes(searchTerm) ||
+      (t.notes || "").toLowerCase().includes(searchTerm) ||
+      (t.category || "").toLowerCase().includes(searchTerm));
+  } else if (selectedDate) {
     visible = viewingToday
       ? visible.filter(t => t.dueDate === selectedDate || t.completedOn === selectedDate || (!t.completed && t.dueDate && t.dueDate < today))
       : visible.filter(t => t.dueDate === selectedDate || t.completedOn === selectedDate);
@@ -510,6 +559,7 @@ function renderTasks() {
     visible = visible.filter(t => !t.completed || t.completedOn === today);
   }
   if (filterCat !== "all") visible = visible.filter(t => t.category === filterCat);
+  if (statusFilter !== "all") visible = visible.filter(t => !t.completed && getTaskStatus(t) === statusFilter);
 
   container.innerHTML = "";
 
@@ -521,24 +571,42 @@ function renderTasks() {
   }
 
   if (visible.length === 0 && overdueTasks.length === 0) {
-    container.innerHTML = `<div class="empty-state">No tasks here yet — add one to get started ✨</div>`;
+    container.innerHTML = searching
+      ? `<div class="empty-state">No tasks match &ldquo;${escapeHtml(searchTerm)}&rdquo;</div>`
+      : statusFilter !== "all"
+        ? `<div class="empty-state">Nothing here with that status.</div>`
+        : `<div class="empty-state">No tasks here yet — type one into Quick add above, or press <kbd>n</kbd> ✨</div>`;
     return;
   }
 
   if (overdueTasks.length > 0) {
     overdueTasks.sort((a, b) => (a.dueDate || "").localeCompare(b.dueDate || ""));
-    const block = document.createElement("div");
-    block.className = "category-block";
-    block.innerHTML = `
-      <div class="category-heading overdue-heading">
-        <span class="category-dot overdue-dot"></span>
-        Overdue
-        <span class="category-count">${overdueTasks.length}</span>
-      </div>
-      <div class="task-list"></div>
-    `;
-    const list = block.querySelector(".task-list");
-    overdueTasks.forEach(t => list.appendChild(renderTaskItem(t)));
+    const movable = overdueTasks.filter(t => !t.recurringId);
+    const missedRecurring = overdueTasks.filter(t => t.recurringId);
+    const actions = [];
+    if (movable.length) actions.push(`<button type="button" class="group-action-btn" data-act="move-today">Move ${movable.length} to today</button>`);
+    if (missedRecurring.length) actions.push(`<button type="button" class="group-action-btn" data-act="skip-recurring">Skip ${missedRecurring.length} missed recurring</button>`);
+    const block = groupBlock({
+      key: "overdue", label: "Overdue", count: overdueTasks.length,
+      headingClass: "overdue-heading", dotClass: "overdue-dot", items: overdueTasks,
+      actionsHtml: actions.join(""),
+    });
+    block.querySelectorAll(".group-action-btn").forEach(btn => {
+      btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        const snap = snapshotState();
+        if (btn.dataset.act === "move-today") {
+          movable.forEach(t => { t.dueDate = today; });
+          saveTasks();
+          renderAll();
+          showUndoToast(`Moved ${movable.length} overdue task${movable.length === 1 ? "" : "s"} to today`, snap);
+        } else {
+          removeTasksAndRecord(missedRecurring.map(t => t.id));
+          renderAll();
+          showUndoToast(`Skipped ${missedRecurring.length} missed recurring task${missedRecurring.length === 1 ? "" : "s"}`, snap);
+        }
+      });
+    });
     container.appendChild(block);
   }
 
@@ -566,38 +634,32 @@ function renderTasks() {
     if (catTasks.length === 0) return;
 
     const color = getCategoryColor(cat);
-    const block = document.createElement("div");
-    block.className = "category-block";
-    block.innerHTML = `
-      <div class="category-heading" style="color:${color}">
-        <span class="category-dot" style="background:${color}"></span>
-        ${escapeHtml(cat)}
-        <span class="category-count">${catTasks.length}</span>
-      </div>
-      <div class="task-list"></div>
-    `;
-    const list = block.querySelector(".task-list");
-
-    catTasks.forEach(t => list.appendChild(renderTaskItem(t)));
-    container.appendChild(block);
+    container.appendChild(groupBlock({
+      key: "cat:" + cat, label: escapeHtml(cat), count: catTasks.length,
+      headingStyle: `color:${color}`, dotStyle: `background:${color}`, items: catTasks,
+    }));
   });
 
   if (completedTasks.length > 0) {
     completedTasks.sort((a, b) => (b.completedOn || b.dueDate || "").localeCompare(a.completedOn || a.dueDate || ""));
-    const block = document.createElement("div");
-    block.className = "category-block";
-    block.innerHTML = `
-      <div class="category-heading completed-heading">
-        <span class="category-dot completed-dot"></span>
-        Completed
-        <span class="category-count">${completedTasks.length}</span>
-      </div>
-      <div class="task-list"></div>
-    `;
-    const list = block.querySelector(".task-list");
-    completedTasks.forEach(t => list.appendChild(renderTaskItem(t, true)));
-    container.appendChild(block);
+    container.appendChild(groupBlock({
+      key: "completed", label: "Completed", count: completedTasks.length,
+      headingClass: "completed-heading", dotClass: "completed-dot", items: completedTasks, showCategory: true,
+    }));
   }
+}
+
+function dueLabelInfo(t) {
+  const d = new Date(t.dueDate + "T00:00:00");
+  const td = new Date(todayStr() + "T00:00:00");
+  const diff = Math.round((d - td) / 86400000);
+  const dateLabel = d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const time = t.dueTime ? " · " + formatTime(t.dueTime) : "";
+  if (t.completed) return { text: `Due ${dateLabel}${time}`, cls: "" };
+  if (diff < 0) return { text: `${-diff}d overdue · ${dateLabel}`, cls: " overdue" };
+  if (diff === 0) return { text: `Due today${time}`, cls: " today" };
+  if (diff === 1) return { text: `Due tomorrow${time}`, cls: "" };
+  return { text: `Due ${dateLabel}${time}`, cls: "" };
 }
 
 function renderTaskItem(t, showCategory) {
@@ -615,13 +677,19 @@ function renderTaskItem(t, showCategory) {
   if (t.recurringId) metaParts.push(`<span class="recurring-badge">↻ Recurring</span>`);
   if (t.link) metaParts.push(`<a href="${escapeAttr(t.link)}" target="_blank" rel="noopener">Link</a>`);
 
+  const today = todayStr();
   const sideParts = [];
   if (t.dueDate) {
-    const dateLabel = new Date(t.dueDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
-    const isOverdue = !t.completed && t.dueDate < todayStr();
-    sideParts.push(`<div class="task-due${isOverdue ? " overdue" : ""}">Due ${dateLabel}${t.dueTime ? " · " + formatTime(t.dueTime) : ""}</div>`);
+    const info = dueLabelInfo(t);
+    sideParts.push(`<div class="task-due${info.cls}">${info.text}</div>`);
   }
   if (t.estimate) sideParts.push(`<div class="task-estimate">${t.estimate} min</div>`);
+
+  let snoozeTarget = null;
+  if (!t.completed && !t.recurringId && t.dueDate && t.dueDate <= today) {
+    snoozeTarget = t.dueDate < today ? { label: "→ Today", date: today } : { label: "→ Tomorrow", date: addDaysStr(1) };
+    sideParts.push(`<button type="button" class="snooze-btn" title="Reschedule">${snoozeTarget.label}</button>`);
+  }
 
   item.innerHTML = `
     <div class="task-checkbox status-${status}" title="${STATUS_META[status].label} — click to change">${STATUS_META[status].icon}</div>
@@ -641,6 +709,18 @@ function renderTaskItem(t, showCategory) {
     e.stopPropagation();
     cycleTaskStatus(t.id);
   });
+
+  const snoozeBtn = item.querySelector(".snooze-btn");
+  if (snoozeBtn && snoozeTarget) {
+    snoozeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const snap = snapshotState();
+      t.dueDate = snoozeTarget.date;
+      saveTasks();
+      renderAll();
+      showUndoToast(`Moved “${t.title}” to ${snoozeTarget.label.replace("→ ", "").toLowerCase()}`, snap);
+    });
+  }
 
   item.addEventListener("click", () => openModal(t.id));
 
@@ -823,37 +903,25 @@ document.getElementById("delete-task-btn").addEventListener("click", () => {
   const id = document.getElementById("task-id").value;
   if (!id) return;
   const target = tasks.find(t => t.id === id);
-  if (target && target.recurringId) {
-    tasks.forEach(t => {
-      if (t.recurringId === target.recurringId && t.id !== id) {
-        t.recurringExcludedDates = t.recurringExcludedDates || [];
-        if (!t.recurringExcludedDates.includes(target.dueDate)) {
-          t.recurringExcludedDates.push(target.dueDate);
-        }
-      }
-    });
-  }
-  tasks = tasks.filter(t => t.id !== id);
-  sessions = sessions.filter(s => s.taskId !== id);
-  saveTasks();
-  saveSessions();
+  const snap = snapshotState();
+  removeTasksAndRecord([id]);
   closeModal();
   renderAll();
   checkAchievements();
+  showUndoToast(`Deleted “${target ? target.title : "task"}”`, snap);
 });
 
 document.getElementById("delete-series-btn").addEventListener("click", () => {
   const id = document.getElementById("task-id").value;
   const t = tasks.find(x => x.id === id);
   if (!t || !t.recurringId) return;
-  const removedIds = new Set(tasks.filter(x => x.recurringId === t.recurringId).map(x => x.id));
-  tasks = tasks.filter(x => x.recurringId !== t.recurringId);
-  sessions = sessions.filter(s => !removedIds.has(s.taskId));
-  saveTasks();
-  saveSessions();
+  const snap = snapshotState();
+  const ids = tasks.filter(x => x.recurringId === t.recurringId).map(x => x.id);
+  removeTasksAndRecord(ids);
   closeModal();
   renderAll();
   checkAchievements();
+  showUndoToast(`Deleted the whole “${t.title}” series (${ids.length} tasks)`, snap);
 });
 
 function generateRecurringDates(startStr, untilStr, frequency, weekdaySet) {
@@ -1950,6 +2018,37 @@ function renderSummary() {
     <div class="summary-extra-item"><span>Top category this week</span><strong>${topCat ? escapeHtml(topCat[0]) : "--"}</strong></div>
     <div class="summary-extra-item"><span>Current on-time streak</span><strong>${streak} day${streak === 1 ? "" : "s"}</strong></div>
   `;
+
+  renderDailyBars(thisWeek.range);
+}
+
+function renderDailyBars(range) {
+  const box = document.getElementById("daily-bars");
+  if (!box) return;
+  const today = todayStr();
+  const labels = ["M", "T", "W", "T", "F", "S", "S"];
+  const days = [];
+  for (let i = 0; i < 7; i++) {
+    const d = new Date(range.start);
+    d.setDate(d.getDate() + i);
+    const ds = formatDate(d);
+    const minutes = sessions.filter(x => x.date === ds).reduce((sum, x) => sum + (Number(x.minutes) || 0), 0);
+    const done = tasks.filter(t => t.completed && t.completedOn === ds).length;
+    days.push({ ds, label: labels[i], minutes, done });
+  }
+  const max = Math.max(60, ...days.map(d => d.minutes));
+  const total = days.reduce((sum, d) => sum + d.minutes, 0);
+  document.getElementById("daily-bars-total").textContent = total ? `${formatMinutesLabel(total)} this week` : "No time tracked yet this week";
+  box.innerHTML = days.map(d => {
+    const pct = Math.round((d.minutes / max) * 100);
+    return `
+      <div class="daily-bar-col${d.ds === today ? " is-today" : ""}${d.ds > today ? " is-future" : ""}" title="${d.ds}: ${formatMinutesLabel(d.minutes) === "0h" ? "0m" : formatMinutesLabel(d.minutes)} tracked, ${d.done} task${d.done === 1 ? "" : "s"} done">
+        <span class="daily-bar-value">${d.minutes ? formatMinutesLabel(d.minutes) : ""}</span>
+        <div class="daily-bar-track"><div class="daily-bar-fill" style="height:${d.minutes ? Math.max(pct, 4) : 0}%"></div></div>
+        <span class="daily-bar-label">${d.label}</span>
+        <span class="daily-bar-done">${d.done ? "✓" + d.done : ""}</span>
+      </div>`;
+  }).join("");
 }
 
 function weekSessionsList(range) {
@@ -2021,6 +2120,425 @@ function renderNextAchievement() {
     ? `${(best.current / 60).toFixed(1)}h / ${(best.target / 60).toFixed(1)}h`
     : `${Math.min(best.current, best.target)} / ${best.target}`;
 }
+
+/* ===================== Upgrade: filters, quick add, undo, shortcuts, backup ===================== */
+const COLLAPSED_KEY = "molly-panel-collapsed-v1";
+const LAST_BACKUP_KEY = "molly-panel-last-backup-v1";
+let collapsedGroups = new Set(loadJSON(COLLAPSED_KEY, []));
+let searchTerm = "";
+let statusFilter = "all";
+
+const WEEKDAY_NAMES = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"];
+
+function addDaysStr(n) {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return formatDate(d);
+}
+
+function nextWeekdayStr(idx) {
+  const d = new Date();
+  let diff = (idx - d.getDay() + 7) % 7;
+  if (diff === 0) diff = 7;
+  d.setDate(d.getDate() + diff);
+  return formatDate(d);
+}
+
+function computeDayStreak() {
+  const today = todayStr();
+  let streak = 0;
+  const cursor = new Date();
+  for (let i = 0; i < 90; i++) {
+    const dateStr = formatDate(cursor);
+    const due = tasks.filter(t => t.dueDate === dateStr);
+    if (due.length > 0) {
+      if (due.every(t => t.completed)) streak++;
+      else if (dateStr !== today) break;
+    }
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
+/* ---------- undo ---------- */
+function snapshotState() {
+  return JSON.stringify({
+    tasks, sessions, unlockedAchievements, categories,
+    priorityQueueOrder, tasksCreatedCount, timerBankedSeconds,
+  });
+}
+
+function restoreSnapshot(json) {
+  const s = JSON.parse(json);
+  tasks = s.tasks || [];
+  sessions = s.sessions || [];
+  unlockedAchievements = s.unlockedAchievements || {};
+  categories = s.categories || DEFAULT_CATEGORIES;
+  priorityQueueOrder = s.priorityQueueOrder || [];
+  tasksCreatedCount = typeof s.tasksCreatedCount === "number" ? s.tasksCreatedCount : tasks.length;
+  timerBankedSeconds = s.timerBankedSeconds || {};
+  saveTasks(); saveSessions(); saveAchievements(); saveCategories();
+  savePriorityQueue(); saveTasksCreatedCount(); saveTimerBank();
+  applyTaskTimerState();
+  renderAll();
+}
+
+function showUndoToast(message, snapshotBefore) {
+  const container = document.getElementById("toast-container");
+  container.querySelectorAll(".toast-undo").forEach(t => t.remove());
+  const toast = document.createElement("div");
+  toast.className = "toast toast-info toast-undo";
+  toast.innerHTML = `
+    <div class="toast-icon"></div>
+    <div>
+      <div class="toast-title">Done</div>
+      <div class="toast-name">${escapeHtml(message)}</div>
+    </div>
+    <button type="button" class="toast-undo-btn">Undo</button>
+  `;
+  toast.querySelector(".toast-undo-btn").addEventListener("click", () => {
+    restoreSnapshot(snapshotBefore);
+    toast.remove();
+    showSimpleToast("Undone", "Everything is back the way it was.");
+  });
+  container.appendChild(toast);
+  setTimeout(() => {
+    toast.classList.add("fade-out");
+    setTimeout(() => toast.remove(), 300);
+  }, 8000);
+}
+
+function removeTasksAndRecord(ids) {
+  const idSet = new Set(ids);
+  tasks.filter(t => idSet.has(t.id) && t.recurringId).forEach(removed => {
+    tasks.forEach(sib => {
+      if (sib.recurringId === removed.recurringId && !idSet.has(sib.id)) {
+        sib.recurringExcludedDates = sib.recurringExcludedDates || [];
+        if (!sib.recurringExcludedDates.includes(removed.dueDate)) sib.recurringExcludedDates.push(removed.dueDate);
+      }
+    });
+  });
+  tasks = tasks.filter(t => !idSet.has(t.id));
+  sessions = sessions.filter(s => !idSet.has(s.taskId));
+  saveTasks();
+  saveSessions();
+}
+
+/* ---------- search + status filter ---------- */
+document.getElementById("task-search").addEventListener("input", (e) => {
+  searchTerm = e.target.value.trim().toLowerCase();
+  renderTasks();
+});
+document.getElementById("status-filter").addEventListener("change", (e) => {
+  statusFilter = e.target.value;
+  renderTasks();
+});
+
+/* ---------- quick add ---------- */
+function parseQuickAdd(text) {
+  const today = todayStr();
+  const res = { title: "", category: null, categoryGuess: null, priority: "medium", dueDate: null, estimate: "" };
+  let s = " " + text + " ";
+
+  s = s.replace(/\snext week\s/i, () => { res.dueDate = nextWeekdayStr(1); return " "; });
+  s = s.replace(/\sin (\d{1,3}) days?\s/i, (m, n) => { res.dueDate = addDaysStr(parseInt(n, 10)); return " "; });
+
+  const kept = [];
+  s.trim().split(/\s+/).filter(Boolean).forEach(tok => {
+    const low = tok.toLowerCase();
+    let m;
+    if ((m = low.match(/^!(high|h|medium|med|m|low|l|ts|time|time-sensitive)$/))) {
+      const k = m[1];
+      res.priority = (k === "high" || k === "h") ? "high"
+        : (k === "low" || k === "l") ? "low"
+        : (k === "ts" || k === "time" || k === "time-sensitive") ? "time-sensitive"
+        : "medium";
+    } else if (tok.length > 1 && tok[0] === "#") {
+      const q = low.slice(1);
+      const cat = categories.find(c => c.name.toLowerCase() === q) || categories.find(c => c.name.toLowerCase().startsWith(q));
+      if (cat) res.category = cat.name; else res.categoryGuess = tok.slice(1);
+    } else if ((m = low.match(/^(\d+(?:\.\d+)?)(m|min|mins|h|hr|hrs)$/))) {
+      const n = parseFloat(m[1]);
+      res.estimate = String(Math.max(1, Math.round(m[2][0] === "h" ? n * 60 : n)));
+    } else if (low === "today") {
+      res.dueDate = today;
+    } else if (low === "tomorrow" || low === "tmr" || low === "tmrw") {
+      res.dueDate = addDaysStr(1);
+    } else if (WEEKDAY_NAMES.includes(low)) {
+      res.dueDate = nextWeekdayStr(WEEKDAY_NAMES.indexOf(low));
+    } else if ((m = low.match(/^(\d{1,2})\/(\d{1,2})$/)) && +m[1] >= 1 && +m[1] <= 12 && +m[2] >= 1 && +m[2] <= 31) {
+      const now = new Date();
+      let d = new Date(now.getFullYear(), +m[1] - 1, +m[2]);
+      if (formatDate(d) < today) d = new Date(now.getFullYear() + 1, +m[1] - 1, +m[2]);
+      res.dueDate = formatDate(d);
+    } else {
+      kept.push(tok);
+    }
+  });
+
+  res.title = kept.join(" ").trim();
+  return res;
+}
+
+function quickAddResolved(parsed) {
+  return {
+    ...parsed,
+    category: parsed.category || (categories[0] && categories[0].name) || "Personal",
+    dueDate: parsed.dueDate || selectedDate || todayStr(),
+  };
+}
+
+function renderQuickAddPreview() {
+  const box = document.getElementById("quick-add-preview");
+  const text = document.getElementById("quick-add-input").value;
+  if (!text.trim()) { box.innerHTML = ""; return; }
+  const p = parseQuickAdd(text);
+  const r = quickAddResolved(p);
+  const chips = [];
+  chips.push(`<span class="qa-chip qa-title">${p.title ? escapeHtml(p.title) : "&hellip;needs a title"}</span>`);
+  chips.push(`<span class="qa-chip" style="border-color:${getCategoryColor(r.category)}">${escapeHtml(r.category)}</span>`);
+  const info = dueLabelInfo({ dueDate: r.dueDate, completed: false });
+  chips.push(`<span class="qa-chip">${info.text.replace(/^Due /, "")}</span>`);
+  chips.push(`<span class="qa-chip">${(PRIORITY_META[r.priority] || PRIORITY_META.medium).label}</span>`);
+  if (r.estimate) chips.push(`<span class="qa-chip">${r.estimate} min</span>`);
+  if (p.categoryGuess) chips.push(`<span class="qa-chip qa-warn">no category “${escapeHtml(p.categoryGuess)}”</span>`);
+  box.innerHTML = chips.join("");
+}
+
+document.getElementById("quick-add-input").addEventListener("input", renderQuickAddPreview);
+
+document.getElementById("quick-add-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const input = document.getElementById("quick-add-input");
+  const parsed = parseQuickAdd(input.value);
+  if (!parsed.title) { input.focus(); return; }
+  const r = quickAddResolved(parsed);
+  const snap = snapshotState();
+  tasks.push({
+    id: uid(), title: r.title, category: r.category, priority: r.priority,
+    estimate: r.estimate, link: "", notes: "", dueDate: r.dueDate, dueTime: "",
+    completed: false, completedOn: null, status: "not-started",
+  });
+  tasksCreatedCount++;
+  saveTasks();
+  saveTasksCreatedCount();
+  input.value = "";
+  renderQuickAddPreview();
+  renderAll();
+  checkAchievements();
+  showUndoToast(`Added “${r.title}”`, snap);
+  input.focus();
+});
+
+/* ---------- date quick picks in the task modal ---------- */
+document.getElementById("date-quick").addEventListener("click", (e) => {
+  const b = e.target.closest("button[data-qd]");
+  if (!b) return;
+  const v = b.dataset.qd;
+  document.getElementById("task-due-date").value =
+    v === "none" ? "" : v === "mon" ? nextWeekdayStr(1) : addDaysStr(parseInt(v, 10));
+});
+
+/* ---------- priority queue helpers ---------- */
+document.getElementById("pq-auto-sort").addEventListener("click", () => {
+  const order = { high: 0, "time-sensitive": 1, medium: 2, low: 3 };
+  const byId = new Map(tasks.map(t => [t.id, t]));
+  priorityQueueOrder.sort((a, b) => {
+    const ta = byId.get(a), tb = byId.get(b);
+    if (!ta || !tb) return 0;
+    const pa = order[ta.priority] ?? 9, pb = order[tb.priority] ?? 9;
+    if (pa !== pb) return pa - pb;
+    return (ta.dueDate || "9999").localeCompare(tb.dueDate || "9999");
+  });
+  savePriorityQueue();
+  renderPriorityQueue();
+  populateTimerTaskSelect();
+  showSimpleToast("Queue sorted", "High priority and oldest due dates first.");
+});
+
+function startTimerForTask(id) {
+  switchTab("pomodoro");
+  document.querySelector('.timer-mode-btn[data-timer-mode="task"]').click();
+  const sel = document.getElementById("pomodoro-task-select");
+  if (!Array.from(sel.options).some(o => o.value === id)) return;
+  if (timerTaskId !== id) {
+    sel.value = id;
+    sel.dispatchEvent(new Event("change"));
+  }
+  if (!timerRunning) document.getElementById("timer-toggle").click();
+}
+
+function switchTab(name) {
+  const btn = document.querySelector(`.tab[data-tab="${name}"]`);
+  if (btn) btn.click();
+}
+
+/* ---------- settings + backup ---------- */
+function backupAgeDays() {
+  const last = localStorage.getItem(LAST_BACKUP_KEY);
+  if (!last) return null;
+  return Math.floor((Date.now() - new Date(last).getTime()) / 86400000);
+}
+
+function updateBackupStatus() {
+  const age = backupAgeDays();
+  const el = document.getElementById("backup-status");
+  el.textContent = age === null
+    ? "You haven't exported a backup yet. A backup file lets you restore everything if a browser clears its data."
+    : age === 0 ? "Last backup: today." : `Last backup: ${age} day${age === 1 ? "" : "s"} ago.`;
+  const stale = tasks.length > 0 && (age === null || age > 14);
+  document.getElementById("settings-dot").style.display = stale ? "block" : "none";
+}
+
+function openSettings() {
+  updateBackupStatus();
+  document.getElementById("settings-overlay").classList.add("open");
+}
+function closeSettings() {
+  document.getElementById("settings-overlay").classList.remove("open");
+  resetImportUI();
+}
+
+document.getElementById("open-settings").addEventListener("click", openSettings);
+document.getElementById("settings-close").addEventListener("click", closeSettings);
+document.getElementById("settings-overlay").addEventListener("click", (e) => {
+  if (e.target.id === "settings-overlay") closeSettings();
+});
+
+function markBackupDone() {
+  localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString());
+  updateBackupStatus();
+}
+
+async function exportBackup() {
+  const payload = {
+    app: "molly-panel", version: 1, exportedAt: new Date().toISOString(),
+    data: { tasks, sessions, unlockedAchievements, categories, priorityQueueOrder, tasksCreatedCount, timerBankedSeconds },
+  };
+  const json = JSON.stringify(payload, null, 2);
+  const filename = `molly-panel-backup-${todayStr()}.json`;
+  const fallback = document.getElementById("backup-fallback");
+  const showFallback = () => {
+    fallback.value = json;
+    fallback.style.display = "block";
+    const note = document.getElementById("import-note");
+    note.textContent = "A download couldn't start here. Copy the text below and save it as a .json file.";
+    note.style.display = "block";
+  };
+  fallback.style.display = "none";
+  try {
+    if (window.claude && typeof window.claude.use === "function") {
+      const dl = await window.claude.use("downloads");
+      if (!dl) { showFallback(); return; }
+      await dl.save({ filename, data: json });
+      markBackupDone();
+      showSimpleToast("Backup saved", `${tasks.length} tasks and ${sessions.length} sessions exported.`);
+      return;
+    }
+    const blob = new Blob([json], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 2000);
+    markBackupDone();
+    showSimpleToast("Backup saved", `${tasks.length} tasks and ${sessions.length} sessions exported.`);
+  } catch (err) {
+    if (err && err.code === "declined") return;
+    showFallback();
+  }
+}
+
+let pendingImport = null;
+
+function resetImportUI() {
+  pendingImport = null;
+  document.getElementById("import-backup-btn").textContent = "Import backup";
+  const note = document.getElementById("import-note");
+  note.style.display = "none";
+  note.textContent = "";
+  document.getElementById("import-backup-file").value = "";
+}
+
+function applyImport(data) {
+  const snap = snapshotState();
+  tasks = Array.isArray(data.tasks) ? data.tasks : [];
+  sessions = Array.isArray(data.sessions) ? data.sessions : [];
+  unlockedAchievements = data.unlockedAchievements && typeof data.unlockedAchievements === "object" ? data.unlockedAchievements : {};
+  categories = Array.isArray(data.categories) && data.categories.length ? data.categories : DEFAULT_CATEGORIES;
+  priorityQueueOrder = Array.isArray(data.priorityQueueOrder) ? data.priorityQueueOrder : [];
+  tasksCreatedCount = typeof data.tasksCreatedCount === "number" ? data.tasksCreatedCount : tasks.length;
+  timerBankedSeconds = data.timerBankedSeconds && typeof data.timerBankedSeconds === "object" ? data.timerBankedSeconds : {};
+  saveTasks(); saveSessions(); saveAchievements(); saveCategories();
+  savePriorityQueue(); saveTasksCreatedCount(); saveTimerBank();
+  applyTaskTimerState();
+  renderAll();
+  checkAchievements();
+  closeSettings();
+  showUndoToast(`Imported ${tasks.length} tasks and ${sessions.length} sessions`, snap);
+}
+
+document.getElementById("export-backup-btn").addEventListener("click", exportBackup);
+
+document.getElementById("import-backup-btn").addEventListener("click", () => {
+  if (pendingImport) {
+    const data = pendingImport;
+    resetImportUI();
+    applyImport(data);
+    return;
+  }
+  document.getElementById("import-backup-file").click();
+});
+
+document.getElementById("import-backup-file").addEventListener("change", (e) => {
+  const file = e.target.files && e.target.files[0];
+  const note = document.getElementById("import-note");
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    try {
+      const obj = JSON.parse(reader.result);
+      const data = obj && obj.data ? obj.data : obj;
+      if (!data || !Array.isArray(data.tasks)) throw new Error("not a backup");
+      pendingImport = data;
+      note.textContent = `Found ${data.tasks.length} tasks and ${(data.sessions || []).length} sessions. Click “Confirm import” to replace what's on this device (you can undo right after).`;
+      note.style.display = "block";
+      document.getElementById("import-backup-btn").textContent = "Confirm import";
+    } catch (err) {
+      pendingImport = null;
+      note.textContent = "That file doesn't look like a Molly's Panel backup.";
+      note.style.display = "block";
+    }
+  };
+  reader.readAsText(file);
+});
+
+/* ---------- keyboard shortcuts ---------- */
+document.addEventListener("keydown", (e) => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === "Escape") {
+    if (document.getElementById("settings-overlay").classList.contains("open")) closeSettings();
+    else if (overlay.classList.contains("open")) closeModal();
+    return;
+  }
+  const tag = (e.target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select" || e.target.isContentEditable) return;
+  if (document.querySelector(".modal-overlay.open")) return;
+  switch (e.key) {
+    case "n": e.preventDefault(); openModal(); break;
+    case "q": e.preventDefault(); switchTab("workspace"); document.getElementById("quick-add-input").focus(); break;
+    case "/": e.preventDefault(); switchTab("workspace"); document.getElementById("task-search").focus(); break;
+    case "1": switchTab("workspace"); break;
+    case "2": switchTab("pomodoro"); break;
+    case "3": switchTab("achievements"); break;
+    case "?": e.preventDefault(); openSettings(); break;
+  }
+});
+
+updateBackupStatus();
 
 function renderAll() {
   renderGreeting();
