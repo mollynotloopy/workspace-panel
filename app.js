@@ -2557,6 +2557,7 @@ document.getElementById("settings-overlay").addEventListener("click", (e) => {
 function markBackupDone() {
   localStorage.setItem(LAST_BACKUP_KEY, new Date().toISOString());
   updateBackupStatus();
+  if (typeof renderMoveBanner === "function") renderMoveBanner();
 }
 
 async function exportBackup() {
@@ -2715,6 +2716,63 @@ document.addEventListener("keydown", (e) => {
 });
 
 updateBackupStatus();
+
+/* ---------- move-to-Artifact banner ---------- */
+const ARTIFACT_URL = "https://claude.ai/artifact/UB1FRKUtSHMCskt4t1YzJP";
+const MIGRATED_KEY = "molly-panel-migrated-v1";
+let IS_PAGES_SITE = location.hostname.endsWith("github.io");
+
+function renderMoveBanner() {
+  const banner = document.getElementById("move-banner");
+  if (!banner) return;
+  const text = document.getElementById("move-banner-text");
+  const actions = document.getElementById("move-banner-actions");
+  const onPages = IS_PAGES_SITE;
+  const inArtifact = !!window.claude;
+  const migrated = localStorage.getItem(MIGRATED_KEY) === "1";
+  actions.innerHTML = "";
+
+  const mkBtn = (label, cls, fn) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = cls;
+    b.textContent = label;
+    b.addEventListener("click", fn);
+    actions.appendChild(b);
+    return b;
+  };
+
+  if (onPages) {
+    banner.style.display = "flex";
+    if (migrated) {
+      text.innerHTML = `<strong>This site has moved.</strong> Your panel now lives at the Claude link, where your data syncs across computers.`;
+      mkBtn("Open the new link", "btn-primary", () => window.open(ARTIFACT_URL, "_blank", "noopener"));
+      return;
+    }
+    const age = backupAgeDays();
+    const justBackedUp = age === 0;
+    text.innerHTML = `<strong>Your panel is moving.</strong> The Claude link syncs across all your computers.
+      <ol>
+        <li>${justBackedUp ? "&#10003; Backup saved." : "Export a backup from this site."}</li>
+        <li>Open the new link, then go to <em>Settings &rarr; Import backup</em> (keep &ldquo;Merge&rdquo; ticked).</li>
+        <li>Come back and press &ldquo;I've moved everything&rdquo;.</li>
+      </ol>`;
+    mkBtn(justBackedUp ? "Export again" : "1. Export backup", "btn-primary", () => exportBackup());
+    mkBtn("2. Open the new link", "btn-secondary", () => window.open(ARTIFACT_URL, "_blank", "noopener"));
+    mkBtn("I've moved everything", "btn-ghost", () => {
+      localStorage.setItem(MIGRATED_KEY, "1");
+      renderMoveBanner();
+      showSimpleToast("All set", "This site keeps your old copy; the Claude link is your main panel now.");
+    });
+  } else if (inArtifact && tasks.length === 0 && !migrated) {
+    banner.style.display = "flex";
+    text.innerHTML = `<strong>Moving over from the old site?</strong> Export a backup there, then use <em>Settings &rarr; Import backup</em> here (keep &ldquo;Merge&rdquo; ticked).`;
+    mkBtn("Open Settings", "btn-primary", openSettings);
+  } else {
+    banner.style.display = "none";
+  }
+}
+renderMoveBanner();
 
 /* ===================== Upgrade 2: checklists, templates, day budget, weekly review ===================== */
 const expandedTasks = new Set();
@@ -3037,6 +3095,7 @@ function renderAll() {
   renderPriorityQueue();
   populateTemplateSelects();
   renderReviewNudge();
+  renderMoveBanner();
   populateTimerTaskSelect();
   renderSessionList();
   renderAchievements();

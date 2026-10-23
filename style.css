@@ -1603,3 +1603,18 @@ kbd, .settings-note code, .empty-state kbd {
 
 .template-save-row { margin: -4px 0 14px; }
 .template-save-row .template-save-btn { padding: 0; }
+
+.move-banner {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 14px;
+  margin-bottom: 18px;
+  padding: 14px 16px;
+  border: 3px solid var(--gold);
+  background: var(--bg-panel);
+  color: var(--text-main);
+  font-size: 13px;
+  line-height: 1.5;
+}
+.move-banner-text { flex: 1 1 320px; min-width: 0; }
+.move-banner-text ol { margin: 6px 0 0; padding-left: 20px; color: var(--text-sub); }
+.move-banner-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+.move-banner-actions button { padding: 7px 14px; font-size: 13px; }
