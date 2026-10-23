@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=7" />
+<link rel="stylesheet" href="style.css?v=10" />
 </head>
 <body>
 
@@ -45,6 +45,7 @@
     <header class="greeting">
       <p class="greeting-eyebrow" id="greeting-date"></p>
       <h1 id="greeting-text">Hello, Molly <span class="wave">:)</span></h1>
+      <button type="button" class="review-nudge" id="review-nudge" style="display:none;">Time for your weekly review &rarr;</button>
       <div class="day-progress" id="day-progress">
         <div class="day-progress-top">
           <span id="day-progress-label"></span>
@@ -112,6 +113,12 @@
             <button type="button" class="pq-sort-btn" id="pq-auto-sort" title="Sort by priority, then oldest due date">Auto-sort</button>
           </div>
           <p class="priority-queue-hint">Drag to rank &middot; &#9654; starts the timer</p>
+          <div class="day-budget">
+            <label>Time budget today
+              <input type="number" id="day-budget-hours" min="0.5" max="16" step="0.5" value="6" /> h
+            </label>
+            <span class="day-budget-summary" id="day-budget-summary"></span>
+          </div>
           <div class="priority-queue-list" id="priority-queue-list"></div>
           <div class="priority-queue-empty" id="priority-queue-empty" style="display:none;">Nothing due today or overdue ✨</div>
         </section>
@@ -141,6 +148,9 @@
 
         <form class="quick-add" id="quick-add-form" autocomplete="off">
           <input type="text" id="quick-add-input" placeholder="Quick add:  Email prof tomorrow !high #Courses 30m   (press Enter)" />
+          <select id="quick-template-select" class="quick-template-select" title="Create a task from a template">
+            <option value="">Templates</option>
+          </select>
           <button type="submit" class="btn-primary">Add</button>
         </form>
         <div class="quick-add-preview" id="quick-add-preview"></div>
@@ -155,6 +165,7 @@
       <header class="greeting summary-header">
         <p class="greeting-eyebrow" id="summary-week-label"></p>
         <h1>Weekly Summary</h1>
+        <button type="button" class="btn-secondary review-open-btn" id="open-review">Start weekly review</button>
       </header>
 
       <section class="stats-grid summary-stats">
@@ -299,6 +310,12 @@
     <form id="task-form">
       <input type="hidden" id="task-id" />
 
+      <div class="template-row" id="template-row" style="display:none;">
+        <select id="template-select">
+          <option value="">Start from a template&hellip;</option>
+        </select>
+      </div>
+
       <div class="edit-scope" id="edit-scope" style="display:none;">
         <div class="edit-scope-switch">
           <button type="button" class="edit-scope-btn active" data-scope="this">Just this one</button>
@@ -417,6 +434,18 @@
         <textarea id="task-notes" rows="2" placeholder="Any extra detail..."></textarea>
       </label>
 
+      <div class="field" id="subtasks-field">
+        <span>Checklist (optional)</span>
+        <div class="subtask-editor" id="subtask-editor"></div>
+        <div class="subtask-add-row">
+          <input type="text" id="subtask-new" placeholder="Add a step, press Enter" maxlength="120" />
+          <button type="button" class="btn-secondary" id="subtask-add-btn">Add</button>
+        </div>
+      </div>
+      <div class="template-save-row">
+        <button type="button" class="template-save-btn" id="save-template-btn" title="Save these details as a reusable template">Save these details as a template</button>
+      </div>
+
       <div class="completion-section">
         <label class="field">
           <span>Status</span>
@@ -443,6 +472,21 @@
   </div>
 </div>
 
+<!-- ===== Weekly review modal ===== -->
+<div class="modal-overlay" id="review-overlay">
+  <div class="modal review-modal">
+    <div class="modal-header">
+      <h2>Weekly review</h2>
+      <button class="icon-btn" id="review-close">&times;</button>
+    </div>
+    <div class="edit-scope-switch review-switch">
+      <button type="button" class="edit-scope-btn active" data-review-week="0">This week</button>
+      <button type="button" class="edit-scope-btn" data-review-week="-1">Last week</button>
+    </div>
+    <div id="review-body" class="review-body"></div>
+  </div>
+</div>
+
 <!-- ===== Settings / backup modal ===== -->
 <div class="modal-overlay" id="settings-overlay">
   <div class="modal settings-modal">
@@ -457,10 +501,17 @@
       <div class="settings-row">
         <button type="button" class="btn-primary" id="export-backup-btn">Export backup</button>
         <button type="button" class="btn-secondary" id="import-backup-btn">Import backup</button>
+        <label class="merge-toggle"><input type="checkbox" id="import-merge" checked /> Merge with what's here (keeps both)</label>
         <input type="file" id="import-backup-file" accept=".json,application/json" style="display:none;" />
       </div>
       <p class="settings-note" id="import-note" style="display:none;"></p>
       <textarea id="backup-fallback" class="backup-fallback" rows="5" style="display:none;" readonly></textarea>
+    </section>
+
+    <section class="settings-section">
+      <h3>Templates</h3>
+      <p class="settings-note">Reusable tasks (with checklists). Create one from the task form with &ldquo;Save as template&rdquo;.</p>
+      <div id="templates-list" class="templates-list"></div>
     </section>
 
     <section class="settings-section">
@@ -516,6 +567,6 @@
   <img id="cat-img" src="assets/cat-mascot.png" alt="pixel cat mascot" draggable="false" />
 </div>
 
-<script src="app.js?v=7"></script>
+<script src="app.js?v=10"></script>
 </body>
 </html>
