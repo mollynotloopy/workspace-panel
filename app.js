@@ -63,8 +63,13 @@ function updateSyncStatus(state) {
   el.classList.remove("synced", "offline");
   if (state === "synced") {
     el.classList.add("synced");
-    el.innerHTML = `<span class="sync-dot"></span> Synced across devices`;
+    el.innerHTML = `<span class="sync-dot"></span> Synced across devices${firebaseUser && firebaseUser.email ? " · " + escapeHtml(firebaseUser.email) : ""}`;
     el.style.display = "flex";
+  } else if (state === "signin") {
+    el.classList.add("offline");
+    el.innerHTML = `<button type="button" class="signin-btn" id="signin-btn">Sign in with Google to sync across devices</button>`;
+    el.style.display = "flex";
+    document.getElementById("signin-btn").addEventListener("click", firebaseSignIn);
   } else if (state === "offline") {
     el.classList.add("offline");
     el.innerHTML = `<span class="sync-dot"></span> Sync unavailable — saving locally only`;
@@ -75,11 +80,11 @@ function updateSyncStatus(state) {
 }
 
 function collectCloudState() {
-  return {
+  return JSON.parse(JSON.stringify({
     tasks, sessions, unlockedAchievements, categories,
     priorityQueueOrder, tasksCreatedCount, timerBankedSeconds, templates, reviews,
     updatedAt: new Date().toISOString(),
-  };
+  }));
 }
 
 function pushToCloud() {
@@ -115,25 +120,20 @@ function applyCloudState(data) {
   updateSyncStatus("synced");
 }
 
-async function initCloudSync() {
-  if (!window.claude || typeof window.claude.use !== "function") return;
-  let db;
-  try {
-    db = await window.claude.use("db");
-  } catch (e) {
-    db = null;
-  }
-  if (!db) {
-    updateSyncStatus("offline");
-    return;
-  }
+let cloudUnsub = null;
+let firebaseUser = null;
+const FIREBASE_SDK_URL = "https://www.gstatic.com/firebasejs/10.14.1/";
 
-  cloudDocRef = db.doc("state/app");
+function attachCloudDoc(docRef) {
+  if (cloudUnsub) { try { cloudUnsub(); } catch (e) { /* already closed */ } cloudUnsub = null; }
+  cloudDocRef = docRef;
+  cloudReady = false;
   let seeded = false;
 
-  cloudDocRef.onSnapshot((snap) => {
-    if (snap.metadata.hasPendingWrites) return;
+  cloudUnsub = docRef.onSnapshot((snap) => {
+    if (snap.metadata && snap.metadata.hasPendingWrites) return;
     if (!snap.exists) {
+      if (snap.metadata && snap.metadata.fromCache) return;
       cloudReady = true;
       if (!seeded) {
         seeded = true;
@@ -156,6 +156,99 @@ async function initCloudSync() {
   }, () => {
     updateSyncStatus("offline");
   });
+}
+
+async function initClaudeSync() {
+  let db;
+  try {
+    db = await window.claude.use("db");
+  } catch (e) {
+    db = null;
+  }
+  if (!db) {
+    updateSyncStatus("offline");
+    return;
+  }
+  attachCloudDoc(db.doc("state/app"));
+}
+
+function loadScriptOnce(src) {
+  return new Promise((resolve, reject) => {
+    const el = document.createElement("script");
+    el.src = src;
+    el.onload = resolve;
+    el.onerror = () => reject(new Error("Could not load " + src));
+    document.head.appendChild(el);
+  });
+}
+
+function firebaseIsConfigured() {
+  return !!(window.FIREBASE_CONFIG && window.FIREBASE_CONFIG.apiKey);
+}
+
+function firebaseSignIn() {
+  const provider = new firebase.auth.GoogleAuthProvider();
+  return firebase.auth().signInWithPopup(provider).catch((err) => {
+    const blocked = err && err.code === "auth/popup-blocked";
+    const closed = err && err.code === "auth/popup-closed-by-user";
+    if (closed) return;
+    showSimpleToast("Couldn't sign in", blocked ? "Allow pop-ups for this site, then try again." : ((err && err.message) || "Please try again."));
+  });
+}
+
+function firebaseSignOut() {
+  return firebase.auth().signOut();
+}
+
+function renderAccountSection() {
+  const section = document.getElementById("account-section");
+  if (!section) return;
+  if (!firebaseIsConfigured()) { section.style.display = "none"; return; }
+  section.style.display = "block";
+  const note = document.getElementById("account-note");
+  const btn = document.getElementById("account-btn");
+  if (firebaseUser) {
+    note.textContent = `Signed in as ${firebaseUser.email || "your Google account"}. Your panel syncs to this account on every device. Signing out leaves a copy in this browser.`;
+    btn.textContent = "Sign out";
+    btn.onclick = firebaseSignOut;
+  } else {
+    note.textContent = "Sign in to sync your panel across devices.";
+    btn.textContent = "Sign in with Google";
+    btn.onclick = firebaseSignIn;
+  }
+}
+
+async function initFirebaseSync() {
+  if (!firebaseIsConfigured()) return;
+  try {
+    if (!window.firebase) {
+      await loadScriptOnce(FIREBASE_SDK_URL + "firebase-app-compat.js");
+      await loadScriptOnce(FIREBASE_SDK_URL + "firebase-auth-compat.js");
+      await loadScriptOnce(FIREBASE_SDK_URL + "firebase-firestore-compat.js");
+    }
+    if (!firebase.apps || !firebase.apps.length) firebase.initializeApp(window.FIREBASE_CONFIG);
+  } catch (e) {
+    updateSyncStatus("offline");
+    return;
+  }
+  renderAccountSection();
+  firebase.auth().onAuthStateChanged((user) => {
+    firebaseUser = user || null;
+    renderAccountSection();
+    if (!user) {
+      if (cloudUnsub) { try { cloudUnsub(); } catch (e) { /* already closed */ } cloudUnsub = null; }
+      cloudDocRef = null;
+      cloudReady = false;
+      updateSyncStatus("signin");
+      return;
+    }
+    attachCloudDoc(firebase.firestore().doc("users/" + user.uid + "/state/app"));
+  });
+}
+
+async function initCloudSync() {
+  if (window.claude && typeof window.claude.use === "function") return initClaudeSync();
+  return initFirebaseSync();
 }
 
 let calendarViewDate = new Date(); // month currently displayed
@@ -2720,57 +2813,34 @@ updateBackupStatus();
 /* ---------- move-to-Artifact banner ---------- */
 const ARTIFACT_URL = "https://claude.ai/artifact/UB1FRKUtSHMCskt4t1YzJP";
 const MIGRATED_KEY = "molly-panel-migrated-v1";
-let IS_PAGES_SITE = location.hostname.endsWith("github.io");
+const STANDALONE_URL = "https://mollynotloopy.github.io/workspace-panel/";
+const STANDALONE_READY = false;
 
 function renderMoveBanner() {
   const banner = document.getElementById("move-banner");
   if (!banner) return;
   const text = document.getElementById("move-banner-text");
   const actions = document.getElementById("move-banner-actions");
-  const onPages = IS_PAGES_SITE;
-  const inArtifact = !!window.claude;
-  const migrated = localStorage.getItem(MIGRATED_KEY) === "1";
   actions.innerHTML = "";
-
-  const mkBtn = (label, cls, fn) => {
-    const b = document.createElement("button");
-    b.type = "button";
-    b.className = cls;
-    b.textContent = label;
-    b.addEventListener("click", fn);
-    actions.appendChild(b);
-    return b;
-  };
-
-  if (onPages) {
-    banner.style.display = "flex";
-    if (migrated) {
-      text.innerHTML = `<strong>This site has moved.</strong> Your panel now lives at the Claude link, where your data syncs across computers.`;
-      mkBtn("Open the new link", "btn-primary", () => window.open(ARTIFACT_URL, "_blank", "noopener"));
-      return;
-    }
-    const age = backupAgeDays();
-    const justBackedUp = age === 0;
-    text.innerHTML = `<strong>Your panel is moving.</strong> The Claude link syncs across all your computers.
-      <ol>
-        <li>${justBackedUp ? "&#10003; Backup saved." : "Export a backup from this site."}</li>
-        <li>Open the new link, then go to <em>Settings &rarr; Import backup</em> (keep &ldquo;Merge&rdquo; ticked).</li>
-        <li>Come back and press &ldquo;I've moved everything&rdquo;.</li>
-      </ol>`;
-    mkBtn(justBackedUp ? "Export again" : "1. Export backup", "btn-primary", () => exportBackup());
-    mkBtn("2. Open the new link", "btn-secondary", () => window.open(ARTIFACT_URL, "_blank", "noopener"));
-    mkBtn("I've moved everything", "btn-ghost", () => {
-      localStorage.setItem(MIGRATED_KEY, "1");
-      renderMoveBanner();
-      showSimpleToast("All set", "This site keeps your old copy; the Claude link is your main panel now.");
-    });
-  } else if (inArtifact && tasks.length === 0 && !migrated) {
-    banner.style.display = "flex";
-    text.innerHTML = `<strong>Moving over from the old site?</strong> Export a backup there, then use <em>Settings &rarr; Import backup</em> here (keep &ldquo;Merge&rdquo; ticked).`;
-    mkBtn("Open Settings", "btn-primary", openSettings);
-  } else {
+  const dismissed = localStorage.getItem(MIGRATED_KEY) === "1";
+  if (!(window.claude && STANDALONE_READY) || dismissed) {
     banner.style.display = "none";
+    return;
   }
+  banner.style.display = "flex";
+  text.innerHTML = `<strong>Your panel has a new home.</strong> The standalone site works in any browser and syncs when you sign in with Google. This Claude copy keeps working, but it no longer syncs with the new site.`;
+  const open = document.createElement("button");
+  open.type = "button";
+  open.className = "btn-primary";
+  open.textContent = "Open the new site";
+  open.addEventListener("click", () => window.open(STANDALONE_URL, "_blank", "noopener"));
+  actions.appendChild(open);
+  const hide = document.createElement("button");
+  hide.type = "button";
+  hide.className = "btn-secondary";
+  hide.textContent = "Dismiss";
+  hide.addEventListener("click", () => { localStorage.setItem(MIGRATED_KEY, "1"); renderMoveBanner(); });
+  actions.appendChild(hide);
 }
 renderMoveBanner();
 
