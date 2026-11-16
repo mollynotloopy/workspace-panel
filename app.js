@@ -841,7 +841,7 @@ function renderTaskItem(t, showCategory) {
     metaParts.push(`<button type="button" class="sub-chip${subsDone === subs.length ? " all-done" : ""}" title="Show checklist">&#9745; ${subsDone}/${subs.length}</button>`);
   }
   const subsHtml = subs.length && subsOpen
-    ? `<div class="subtask-list">${subs.map((x, i) => `<div class="sub-row${x.done ? " is-done" : ""}" data-i="${i}"><span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="sub-text">${escapeHtml(x.text)}</span></div>`).join("")}</div>`
+    ? `<div class="subtask-list">${subs.map((x, i) => `<div class="sub-row${x.done ? " is-done" : ""}" data-i="${i}"><span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="sub-text">${escapeHtml(x.text)}</span>${x.day ? `<span class="sub-daytag${!x.done && x.day < todayStr() ? " late" : ""}">${new Date(x.day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })}</span>` : ""}</div>`).join("")}</div>`
     : "";
 
   const today = todayStr();
@@ -1118,6 +1118,7 @@ function openModal(taskId = null) {
     if (selectedDate) document.getElementById("task-due-date").value = selectedDate;
   }
 
+  renderSubtaskEditor();
   overlay.classList.add("open");
 }
 
@@ -2862,7 +2863,25 @@ let modalSubtasks = [];
 function cleanSubtasks(arr, fresh) {
   return (arr || [])
     .filter(x => x && String(x.text || "").trim())
-    .map(x => ({ id: fresh ? uid() : (x.id || uid()), text: String(x.text).trim(), done: fresh ? false : !!x.done }));
+    .map(x => {
+      const o = { id: fresh ? uid() : (x.id || uid()), text: String(x.text).trim(), done: fresh ? false : !!x.done };
+      if (!fresh && x.day && /^\d{4}-\d{2}-\d{2}$/.test(x.day)) o.day = x.day;
+      return o;
+    });
+}
+
+// days a step can be assigned to, based on the form's start/due dates
+function stepDayOptions(current) {
+  const start = document.getElementById("task-start-date").value;
+  const due = document.getElementById("task-due-date").value;
+  const from = start || due || todayStr();
+  const to = due || dateShift(from, 6);
+  const out = [];
+  if (from <= to) {
+    for (let d = from, n = 0; d <= to && n < 45; d = dateShift(d, 1), n++) out.push(d);
+  }
+  if (current && !out.includes(current)) out.push(current);
+  return out.sort();
 }
 
 function renderSubtaskEditor() {
@@ -2874,8 +2893,17 @@ function renderSubtaskEditor() {
     row.innerHTML = `
       <span class="sub-box${step.done ? " done" : ""}" title="Mark step done">&#10003;</span>
       <input type="text" value="${escapeAttr(step.text)}" maxlength="120" />
+      <select class="sub-day" title="Day to work on this step"></select>
       <button type="button" class="sub-del" title="Remove step">&times;</button>
     `;
+    const daySel = row.querySelector(".sub-day");
+    const fillDays = () => {
+      daySel.innerHTML = `<option value="">Any day</option>` + stepDayOptions(step.day).map(d =>
+        `<option value="${d}"${d === step.day ? " selected" : ""}>${new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })}</option>`).join("");
+    };
+    fillDays();
+    daySel.addEventListener("mousedown", fillDays);
+    daySel.addEventListener("change", () => { if (daySel.value) step.day = daySel.value; else delete step.day; });
     row.querySelector(".sub-box").addEventListener("click", () => {
       step.done = !step.done;
       renderSubtaskEditor();
@@ -2892,6 +2920,11 @@ function renderSubtaskEditor() {
     box.appendChild(row);
   });
 }
+
+["task-start-date", "task-due-date"].forEach(id => {
+  document.getElementById(id).addEventListener("change", () => { if (modalSubtasks.length) renderSubtaskEditor(); });
+});
+document.getElementById("start-clear").addEventListener("click", () => { if (modalSubtasks.length) renderSubtaskEditor(); });
 
 function addSubtaskFromInput() {
   const input = document.getElementById("subtask-new");
@@ -3269,6 +3302,23 @@ function renderWeek() {
       chip.addEventListener("click", () => openModal(t.id));
       list.appendChild(chip);
     });
+    const steps = [];
+    tasks.forEach(t => (t.subtasks || []).forEach((x, si) => { if (x.day === d && !t.completed) steps.push({ t, x, si }); }));
+    steps.sort((a, b) => (a.x.done - b.x.done));
+    steps.forEach(({ t, x }) => {
+      const row = document.createElement("div");
+      row.className = "week-step" + (x.done ? " is-done" : "");
+      row.innerHTML = `<span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="week-step-text">${escapeHtml(x.text)}<small>${escapeHtml(t.title)}</small></span>`;
+      row.querySelector(".sub-box").addEventListener("click", (e) => {
+        e.stopPropagation();
+        x.done = !x.done;
+        saveTasks();
+        renderTasks();
+        renderWeek();
+      });
+      row.addEventListener("click", () => openModal(t.id));
+      list.appendChild(row);
+    });
     due.sort((a, b) => (a.completed - b.completed) || (a.dueTime || "99").localeCompare(b.dueTime || "99"));
     due.forEach(t => {
       const status = getTaskStatus(t);
@@ -3282,7 +3332,7 @@ function renderWeek() {
       row.addEventListener("click", () => openModal(t.id));
       list.appendChild(row);
     });
-    if (!due.length && !working.length) {
+    if (!due.length && !working.length && !steps.length) {
       const empty = document.createElement("div");
       empty.className = "week-day-empty";
       empty.textContent = "—";
