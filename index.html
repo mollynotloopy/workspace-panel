@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=12" />
+<link rel="stylesheet" href="style.css?v=13" />
 </head>
 <body>
 
@@ -34,6 +34,7 @@
   <nav class="tabbar">
     <div class="tabbar-inner">
       <button class="tab active" data-tab="workspace">Workspace</button>
+      <button class="tab" data-tab="week">Week</button>
       <button class="tab" data-tab="pomodoro">Timer</button>
       <button class="tab" data-tab="achievements">Achievements</button>
     </div>
@@ -294,6 +295,35 @@
     </div>
   </main>
 
+  <!-- ===== WEEK PANEL ===== -->
+  <main id="week" class="panel">
+    <header class="greeting">
+      <p class="greeting-eyebrow" id="week-range-label"></p>
+      <h1>This week's plan</h1>
+    </header>
+
+    <div class="week-toolbar">
+      <div class="week-nav">
+        <button class="icon-btn" id="week-prev" title="Previous week">&#8249;</button>
+        <button class="btn-secondary" id="week-today">This week</button>
+        <button class="icon-btn" id="week-next" title="Next week">&#8250;</button>
+      </div>
+      <button class="btn-primary" id="week-add-big">+ Add big task</button>
+    </div>
+
+    <section class="card week-goals-card">
+      <div class="week-section-head">
+        <h2>Big tasks &amp; goals</h2>
+        <span class="week-section-hint">Bars run from the day you start to the day it's due. Click one to edit.</span>
+      </div>
+      <div class="week-daybar" id="week-daybar"></div>
+      <div class="week-bars" id="week-bars"></div>
+      <div class="week-empty" id="week-bars-empty" style="display:none;">No multi-day tasks this week. Add a big task with a start date and it will appear here.</div>
+    </section>
+
+    <section class="week-days" id="week-days"></section>
+  </main>
+
   <!-- ===== ACHIEVEMENTS PANEL ===== -->
   <main id="achievements" class="panel">
     <header class="greeting">
@@ -366,6 +396,14 @@
           <span>Due time</span>
           <input type="time" id="task-due-time" />
         </label>
+      </div>
+      <div class="field start-field" id="start-field">
+        <span>Start working on (optional)</span>
+        <div class="start-row">
+          <input type="date" id="task-start-date" />
+          <button type="button" class="date-quick-btn" id="start-clear">Clear</button>
+        </div>
+        <p class="start-hint" id="start-hint">For big tasks: it will show up on your Week view and daily lists from this day until it's due.</p>
       </div>
       <div class="date-quick" id="date-quick">
         <button type="button" data-qd="0">Today</button>
@@ -532,6 +570,7 @@
         <span><kbd>q</kbd> Quick add</span>
         <span><kbd>/</kbd> Search tasks</span>
         <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Workspace / Timer / Achievements</span>
+        <span><kbd>w</kbd> Week plan</span>
         <span><kbd>?</kbd> This panel</span>
         <span><kbd>Esc</kbd> Close any window</span>
       </div>
@@ -579,6 +618,6 @@
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=12"></script>
+<script src="app.js?v=13"></script>
 </body>
 </html>

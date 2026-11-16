@@ -492,7 +492,7 @@ function renderPriorityQueue() {
   const empty = document.getElementById("priority-queue-empty");
   const today = todayStr();
 
-  const eligible = tasks.filter(t => !t.completed && t.dueDate && t.dueDate <= today);
+  const eligible = tasks.filter(t => isWorkableToday(t, today));
   const eligibleIds = new Set(eligible.map(t => t.id));
 
   const beforeOrder = priorityQueueOrder.join("|");
@@ -701,9 +701,10 @@ function renderTasks() {
       (t.notes || "").toLowerCase().includes(searchTerm) ||
       (t.category || "").toLowerCase().includes(searchTerm));
   } else if (selectedDate) {
+    const inWindow = t => !t.completed && t.startDate && t.dueDate && t.startDate <= selectedDate && selectedDate <= t.dueDate;
     visible = viewingToday
-      ? visible.filter(t => t.dueDate === selectedDate || t.completedOn === selectedDate || (!t.completed && t.dueDate && t.dueDate < today))
-      : visible.filter(t => t.dueDate === selectedDate || t.completedOn === selectedDate);
+      ? visible.filter(t => t.dueDate === selectedDate || t.completedOn === selectedDate || inWindow(t) || (!t.completed && t.dueDate && t.dueDate < today))
+      : visible.filter(t => t.dueDate === selectedDate || t.completedOn === selectedDate || inWindow(t));
   } else if (!showCompletedAll) {
     visible = visible.filter(t => !t.completed || t.completedOn === today);
   }
@@ -822,6 +823,10 @@ function renderTaskItem(t, showCategory) {
   if (showCategory) {
     const catColor = getCategoryColor(t.category);
     metaParts.push(`<span class="recurring-badge" style="color:${catColor}">${escapeHtml(t.category)}</span>`);
+  }
+  if (t.startDate && t.dueDate && t.startDate < t.dueDate && !t.completed) {
+    const sd = new Date(t.startDate + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" });
+    metaParts.push(`<span class="recurring-badge start-badge" title="Working window: ${t.startDate} to ${t.dueDate}">${t.startDate > todayStr() ? "Starts " + sd : "Started " + sd}</span>`);
   }
   if (t.recurringId) {
     const changed = Object.keys(t.recurringOverrides || {});
@@ -1031,6 +1036,7 @@ function setEditScope(scope) {
   document.getElementById("series-edit-note").style.display = series ? "block" : "none";
   dueDateRow.style.display = series ? "none" : "grid";
   document.getElementById("subtasks-field").style.display = series ? "none" : "block";
+  document.getElementById("start-field").style.display = series ? "none" : "block";
   document.querySelector(".template-save-row").style.display = series ? "none" : "block";
   document.getElementById("edit-scope-hint").textContent = series
     ? "Changes apply to every occurrence. Anything you edited on a single day is kept."
@@ -1072,6 +1078,8 @@ function openModal(taskId = null) {
   document.getElementById("edit-scope").style.display = isSeriesEdit ? "block" : "none";
   editScope = isSeriesEdit ? "this" : "none";
   document.getElementById("subtasks-field").style.display = "block";
+  document.getElementById("start-field").style.display = "block";
+  document.getElementById("task-start-date").value = "";
   document.querySelector(".template-save-row").style.display = "block";
   modalSubtasks = t && Array.isArray(t.subtasks) ? t.subtasks.map(x => ({ ...x })) : [];
   renderSubtaskEditor();
@@ -1085,6 +1093,7 @@ function openModal(taskId = null) {
     document.getElementById("task-category").value = t.category;
     document.getElementById("task-priority").value = t.priority;
     document.getElementById("task-due-date").value = t.dueDate || "";
+    document.getElementById("task-start-date").value = t.startDate || "";
     document.getElementById("task-due-time").value = t.dueTime || "";
     document.getElementById("task-estimate").value = t.estimate || "";
     document.getElementById("task-link").value = t.link || "";
@@ -1301,6 +1310,7 @@ form.addEventListener("submit", (e) => {
       ...baseData,
       dueDate: document.getElementById("task-due-date").value,
       dueTime: document.getElementById("task-due-time").value,
+      startDate: readStartDate(document.getElementById("task-due-date").value),
     };
 
     if (id) {
@@ -1699,7 +1709,7 @@ function populateTimerTaskSelect() {
   const current = select.value;
   const today = todayStr();
   select.innerHTML = `<option value="">Select a task...</option>`;
-  const eligible = tasks.filter(t => !t.completed && t.dueDate && t.dueDate <= today);
+  const eligible = tasks.filter(t => isWorkableToday(t, today));
   const orderIndex = new Map(priorityQueueOrder.map((id, i) => [id, i]));
   eligible
     .sort((a, b) => {
@@ -2115,7 +2125,7 @@ function applyTaskTimerState() {
   timerAlerted = false;
   document.getElementById("timer-alert").classList.remove("show");
 
-  const valid = s && s.taskId && tasks.some(t => t.id === s.taskId && !t.completed && t.dueDate && t.dueDate <= today);
+  const valid = s && s.taskId && tasks.some(t => t.id === s.taskId && isWorkableToday(t, today));
   if (!valid) {
     timerTaskId = "";
     timerSeconds = 0;
@@ -2804,6 +2814,7 @@ document.addEventListener("keydown", (e) => {
     case "1": switchTab("workspace"); break;
     case "2": switchTab("pomodoro"); break;
     case "3": switchTab("achievements"); break;
+    case "w": switchTab("week"); break;
     case "?": e.preventDefault(); openSettings(); break;
   }
 });
@@ -3156,6 +3167,145 @@ document.querySelectorAll("[data-review-week]").forEach(btn => {
   btn.addEventListener("click", () => { reviewWeekOffset = parseInt(btn.dataset.reviewWeek, 10); renderReview(); });
 });
 
+/* ===================== Week plan ===================== */
+let weekOffset = 0;
+
+function isWorkableToday(t, today) {
+  if (t.completed || !t.dueDate) return false;
+  if (t.dueDate <= today) return true;
+  return !!(t.startDate && t.startDate <= today);
+}
+
+function readStartDate(dueDate) {
+  const start = document.getElementById("task-start-date").value;
+  if (!start) return "";
+  if (dueDate && start > dueDate) {
+    showSimpleToast("Start date moved", "Start was after the due date, so it was cleared.");
+    return "";
+  }
+  return start;
+}
+
+document.getElementById("start-clear").addEventListener("click", () => {
+  document.getElementById("task-start-date").value = "";
+});
+
+function dateShift(dateStr, n) {
+  const d = new Date(dateStr + "T12:00:00");
+  d.setDate(d.getDate() + n);
+  return formatDate(d);
+}
+
+function renderWeek() {
+  const panel = document.getElementById("week");
+  if (!panel) return;
+  const range = getWeekRange(weekOffset);
+  const startStr = formatDate(range.start);
+  const days = Array.from({ length: 7 }, (_, i) => dateShift(startStr, i));
+  const endStr = days[6];
+  const today = todayStr();
+  const fmt = (d, o) => new Date(d + "T12:00:00").toLocaleDateString(undefined, o);
+
+  document.getElementById("week-range-label").textContent =
+    `${fmt(startStr, { month: "short", day: "numeric" })} – ${fmt(endStr, { month: "short", day: "numeric" })}` +
+    (weekOffset === 0 ? " · this week" : weekOffset === 1 ? " · next week" : weekOffset === -1 ? " · last week" : "");
+
+  // header strip
+  const strip = document.getElementById("week-daybar");
+  strip.innerHTML = days.map(d =>
+    `<div class="week-dayhead${d === today ? " is-today" : ""}"><strong>${fmt(d, { weekday: "short" })}</strong><span>${fmt(d, { month: "short", day: "numeric" })}</span></div>`
+  ).join("");
+
+  // multi-day bars
+  const span = tasks.filter(t => t.startDate && t.dueDate && t.startDate < t.dueDate && t.startDate <= endStr && t.dueDate >= startStr);
+  span.sort((a, b) => a.startDate.localeCompare(b.startDate) || a.dueDate.localeCompare(b.dueDate));
+  const bars = document.getElementById("week-bars");
+  bars.innerHTML = "";
+  document.getElementById("week-bars-empty").style.display = span.length ? "none" : "block";
+  span.forEach(t => {
+    const i0 = Math.max(0, days.indexOf(t.startDate < startStr ? startStr : t.startDate));
+    const i1 = days.indexOf(t.dueDate > endStr ? endStr : t.dueDate);
+    const color = getCategoryColor(t.category);
+    const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
+    const subsDone = subs.filter(x => x.done).length;
+    const bar = document.createElement("button");
+    bar.type = "button";
+    bar.className = "week-bar" + (t.completed ? " is-done" : "") +
+      (t.startDate < startStr ? " cut-left" : "") + (t.dueDate > endStr ? " cut-right" : "");
+    bar.style.gridColumn = `${i0 + 1} / ${i1 + 2}`;
+    bar.style.borderColor = color;
+    bar.style.background = `linear-gradient(90deg, ${color}33, ${color}1a)`;
+    bar.title = `${t.title}: start ${t.startDate}, due ${t.dueDate}`;
+    bar.innerHTML = `
+      <span class="week-bar-title">${escapeHtml(t.title)}</span>
+      <span class="week-bar-meta">${subs.length ? `&#9745; ${subsDone}/${subs.length} · ` : ""}due ${fmt(t.dueDate, { weekday: "short" })}${t.estimate ? " · " + t.estimate + " min" : ""}</span>`;
+    bar.addEventListener("click", () => openModal(t.id));
+    bars.appendChild(bar);
+  });
+
+  // day columns
+  const box = document.getElementById("week-days");
+  box.innerHTML = "";
+  days.forEach(d => {
+    const due = tasks.filter(t => t.dueDate === d || (t.completed && t.completedOn === d && t.dueDate !== d));
+    const open = due.filter(t => !t.completed);
+    const mins = open.reduce((sum, t) => sum + (Number(t.estimate) || 0), 0);
+    const working = tasks.filter(t => !t.completed && t.startDate && t.dueDate && t.startDate <= d && d < t.dueDate);
+    const col = document.createElement("div");
+    col.className = "week-day" + (d === today ? " is-today" : "") + (d < today ? " is-past" : "");
+    col.innerHTML = `
+      <div class="week-day-head">
+        <strong>${fmt(d, { weekday: "short" })} ${fmt(d, { day: "numeric" })}</strong>
+        <span>${open.length ? open.length + " task" + (open.length === 1 ? "" : "s") + (mins ? " · " + formatMinutesLabel(mins) : "") : "free"}</span>
+      </div>
+      <div class="week-day-list"></div>`;
+    const list = col.querySelector(".week-day-list");
+    working.forEach(t => {
+      const chip = document.createElement("button");
+      chip.type = "button";
+      chip.className = "week-working";
+      chip.title = "Working window — click to edit";
+      chip.innerHTML = `&#9654; ${escapeHtml(t.title)}`;
+      chip.addEventListener("click", () => openModal(t.id));
+      list.appendChild(chip);
+    });
+    due.sort((a, b) => (a.completed - b.completed) || (a.dueTime || "99").localeCompare(b.dueTime || "99"));
+    due.forEach(t => {
+      const status = getTaskStatus(t);
+      const row = document.createElement("div");
+      row.className = "week-task" + (t.completed ? " is-done" : "");
+      row.innerHTML = `
+        <span class="task-checkbox status-${status}" title="${STATUS_META[status].label} — click to change">${STATUS_META[status].icon}</span>
+        <span class="week-task-title">${escapeHtml(t.title)}</span>
+        ${t.startDate && t.startDate < t.dueDate && t.dueDate === d ? `<span class="week-due-tag">due</span>` : ""}`;
+      row.querySelector(".task-checkbox").addEventListener("click", (e) => { e.stopPropagation(); cycleTaskStatus(t.id); });
+      row.addEventListener("click", () => openModal(t.id));
+      list.appendChild(row);
+    });
+    if (!due.length && !working.length) {
+      const empty = document.createElement("div");
+      empty.className = "week-day-empty";
+      empty.textContent = "—";
+      list.appendChild(empty);
+    }
+    box.appendChild(col);
+  });
+}
+
+document.getElementById("week-prev").addEventListener("click", () => { weekOffset--; renderWeek(); });
+document.getElementById("week-next").addEventListener("click", () => { weekOffset++; renderWeek(); });
+document.getElementById("week-today").addEventListener("click", () => { weekOffset = 0; renderWeek(); });
+document.getElementById("week-add-big").addEventListener("click", () => {
+  openModal();
+  const today = todayStr();
+  const range = getWeekRange(weekOffset);
+  const weekStart = formatDate(range.start);
+  const start = weekOffset === 0 ? today : weekStart;
+  document.getElementById("task-start-date").value = start;
+  const fri = dateShift(weekStart, 4);
+  document.getElementById("task-due-date").value = fri >= start ? fri : dateShift(start, 2);
+});
+
 function renderAll() {
   renderGreeting();
   renderCalendar();
@@ -3163,6 +3313,7 @@ function renderAll() {
   populateCategorySelects();
   renderTasks();
   renderPriorityQueue();
+  renderWeek();
   populateTemplateSelects();
   renderReviewNudge();
   renderMoveBanner();
