@@ -3291,7 +3291,9 @@ function renderWeek() {
         <strong>${fmt(d, { weekday: "short" })} ${fmt(d, { day: "numeric" })}</strong>
         <span>${open.length ? open.length + " task" + (open.length === 1 ? "" : "s") + (mins ? " · " + formatMinutesLabel(mins) : "") : "free"}</span>
       </div>
-      <div class="week-day-list"></div>`;
+      <div class="week-day-list"></div>
+      <button type="button" class="week-day-add" title="Add a task on this day">+ add</button>`;
+    col.querySelector(".week-day-add").addEventListener("click", () => { openModal(); document.getElementById("task-due-date").value = d; });
     const list = col.querySelector(".week-day-list");
     working.forEach(t => {
       const chip = document.createElement("button");
@@ -3324,9 +3326,13 @@ function renderWeek() {
       const status = getTaskStatus(t);
       const row = document.createElement("div");
       row.className = "week-task" + (t.completed ? " is-done" : "");
+      const cc = getCategoryColor(t.category);
+      row.style.background = `${cc}33`;
+      row.style.borderColor = cc;
+      row.title = `${t.category || "No category"}${t.estimate ? " · " + t.estimate + " min" : ""}`;
       row.innerHTML = `
         <span class="task-checkbox status-${status}" title="${STATUS_META[status].label} — click to change">${STATUS_META[status].icon}</span>
-        <span class="week-task-title">${escapeHtml(t.title)}</span>
+        <span class="week-task-title">${escapeHtml(t.title)}<small class="week-task-sub"><span class="week-cat-dot" style="background:${cc}"></span>${escapeHtml(t.category || "")}${t.estimate ? `<b>${formatMinutesLabel(t.estimate)}</b>` : ""}</small></span>
         ${t.startDate && t.startDate < t.dueDate && t.dueDate === d ? `<span class="week-due-tag">due</span>` : ""}`;
       row.querySelector(".task-checkbox").addEventListener("click", (e) => { e.stopPropagation(); cycleTaskStatus(t.id); });
       row.addEventListener("click", () => openModal(t.id));
@@ -3345,6 +3351,12 @@ function renderWeek() {
 document.getElementById("week-prev").addEventListener("click", () => { weekOffset--; renderWeek(); });
 document.getElementById("week-next").addEventListener("click", () => { weekOffset++; renderWeek(); });
 document.getElementById("week-today").addEventListener("click", () => { weekOffset = 0; renderWeek(); });
+document.getElementById("week-add-task").addEventListener("click", () => {
+  openModal();
+  const today = todayStr();
+  const weekStart = formatDate(getWeekRange(weekOffset).start);
+  document.getElementById("task-due-date").value = (weekOffset === 0 ? today : weekStart);
+});
 document.getElementById("week-add-big").addEventListener("click", () => {
   openModal();
   const today = todayStr();

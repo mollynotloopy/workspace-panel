@@ -1710,3 +1710,11 @@ kbd, .settings-note code, .empty-state kbd {
 .week-step-text { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; word-break: break-word; }
 .week-step-text small { opacity: .65; font-size: 10px; }
 .week-step.is-done .week-step-text { text-decoration: line-through; opacity: .55; }
+
+/* ===== Week: add + category tint ===== */
+.week-add-btns { display: flex; gap: 8px; flex-wrap: wrap; }
+.week-task-sub { display: flex; align-items: center; gap: 4px; margin-top: 2px; font-size: 10px; opacity: .8; }
+.week-task-sub b { margin-left: auto; font-weight: 700; }
+.week-cat-dot { width: 7px; height: 7px; flex: none; display: inline-block; }
+.week-day-add { margin-top: 8px; width: 100%; padding: 3px; font: inherit; font-size: 11px; color: var(--text-sub); background: transparent; border: 2px dashed var(--outline); cursor: pointer; opacity: .6; }
+.week-day-add:hover { opacity: 1; border-color: var(--accent); color: var(--text-main); }
