@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=15" />
+<link rel="stylesheet" href="style.css?v=18" />
 </head>
 <body>
 
@@ -135,6 +135,7 @@
         <div class="tasks-header">
           <h2 id="tasks-title">All Tasks</h2>
           <div class="tasks-controls">
+            <button class="btn-secondary" id="open-focus" title="Distraction-free view of your next task (f)">Focus</button>
             <button class="btn-secondary" id="toggle-completed-btn">Show Completed</button>
             <button class="btn-primary" id="add-task-btn">+ Add Task</button>
           </div>
@@ -249,6 +250,16 @@
 
           <p class="timer-alert" id="timer-alert">You've passed your estimated time — wrap it up!</p>
 
+          <div class="pomo-row">
+            <label class="merge-toggle"><input type="checkbox" id="pomo-enabled" /> Pomodoro mode</label>
+            <span class="pomo-hint" id="pomo-hint"></span>
+          </div>
+          <div class="pomo-break" id="pomo-break" style="display:none;">
+            <strong id="pomo-break-title">Break time</strong>
+            <span class="pomo-break-time" id="pomo-break-time">05:00</span>
+            <button type="button" class="btn-secondary" id="pomo-skip">Skip break</button>
+          </div>
+
           <div class="timer-controls">
             <button class="btn-primary" id="timer-toggle" disabled>Start</button>
             <button class="btn-secondary" id="timer-reset">Reset</button>
@@ -308,8 +319,20 @@
         <button class="btn-secondary" id="week-today">This week</button>
         <button class="icon-btn" id="week-next" title="Next week">&#8250;</button>
       </div>
-      <div class="week-add-btns"><button class="btn-secondary" id="week-add-task">+ Add task</button><button class="btn-primary" id="week-add-big">+ Add big task</button></div>
+      <div class="week-add-btns"><label class="week-capacity" title="Hours you want to work per day (same as the time budget in Priority Queue)">Capacity <input type="number" id="week-capacity" min="0.5" max="16" step="0.5" /> h/day</label><button class="btn-secondary" id="week-export" title="Download this week as a calendar file">Export .ics</button><button class="btn-secondary" id="week-add-task">+ Add task</button><button class="btn-primary" id="week-add-big">+ Add big task</button></div>
     </div>
+
+    <section class="card week-focus-goals">
+      <div class="week-section-head">
+        <h2>Goals for the week</h2>
+        <span class="week-section-hint" id="week-goals-count"></span>
+      </div>
+      <div class="week-goal-list" id="week-goal-list"></div>
+      <div class="week-goal-add">
+        <input type="text" id="week-goal-new" placeholder="This week I want to… (press Enter)" maxlength="100" />
+        <button type="button" class="btn-secondary" id="week-goal-add-btn">Add</button>
+      </div>
+    </section>
 
     <section class="card week-goals-card">
       <div class="week-section-head">
@@ -330,6 +353,15 @@
       <p class="greeting-eyebrow" id="achievements-count-label"></p>
       <h1>Achievements</h1>
     </header>
+    <section class="card insight-card">
+      <div class="week-section-head"><h2>Your activity</h2><span class="week-section-hint" id="heatmap-note"></span></div>
+      <div class="heatmap-wrap"><div class="heatmap" id="heatmap"></div></div>
+      <div class="heatmap-legend"><span>Less</span><i class="hm0"></i><i class="hm1"></i><i class="hm2"></i><i class="hm3"></i><i class="hm4"></i><span>More</span></div>
+    </section>
+    <section class="card insight-card">
+      <div class="week-section-head"><h2>Estimates vs reality</h2><span class="week-section-hint" id="estimates-note"></span></div>
+      <div id="estimates-body"></div>
+    </section>
     <div id="achievements-grid" class="achievements-sections"></div>
   </main>
 
@@ -484,9 +516,14 @@
           <input type="text" id="subtask-new" placeholder="Add a step, press Enter" maxlength="120" />
           <button type="button" class="btn-secondary" id="subtask-add-btn">Add</button>
         </div>
+        <div class="spread-row">
+          <button type="button" class="btn-secondary" id="spread-steps-btn" title="Evenly assign steps without a day across the start–due window">Spread steps across days</button>
+          <label class="merge-toggle"><input type="checkbox" id="spread-skip-weekends" /> skip weekends</label>
+        </div>
       </div>
       <div class="template-save-row">
         <button type="button" class="template-save-btn" id="save-template-btn" title="Save these details as a reusable template">Save these details as a template</button>
+        <a class="template-save-btn" id="gcal-link" target="_blank" rel="noopener" style="display:none;">Add to Google Calendar</a>
       </div>
 
       <div class="completion-section">
@@ -558,6 +595,33 @@
     </section>
 
     <section class="settings-section">
+      <h3>Focus &amp; reminders</h3>
+      <div class="settings-row pref-row">
+        <label>Pomodoro: work <input type="number" id="pref-pomo-work" min="5" max="90" /> min</label>
+        <label>break <input type="number" id="pref-pomo-break" min="1" max="30" /> min</label>
+      </div>
+      <div class="settings-row pref-row">
+        <label class="merge-toggle"><input type="checkbox" id="pref-remind" /> Remind me before tasks with a due time</label>
+        <label>lead <input type="number" id="pref-remind-lead" min="1" max="120" /> min</label>
+      </div>
+      <div class="settings-row pref-row">
+        <label class="merge-toggle"><input type="checkbox" id="pref-morning" /> Morning summary at</label>
+        <input type="time" id="pref-morning-time" />
+      </div>
+      <p class="settings-note" id="remind-note">Reminders appear as a pop-up in the app and, if you allow it, as a browser notification. They only fire while this page is open.</p>
+    </section>
+
+    <section class="settings-section">
+      <h3>Calendar &amp; archive</h3>
+      <div class="settings-row">
+        <button type="button" class="btn-secondary" id="export-ics-btn">Export all open tasks (.ics)</button>
+        <button type="button" class="btn-secondary" id="archive-btn">Archive old completed tasks</button>
+        <button type="button" class="btn-ghost" id="unarchive-btn" style="display:none;">Restore archived</button>
+      </div>
+      <p class="settings-note" id="archive-note">Archiving hides completed tasks older than 30 days from the lists. They still count in your stats and can be found with search.</p>
+    </section>
+
+    <section class="settings-section">
       <h3>Templates</h3>
       <p class="settings-note">Reusable tasks (with checklists). Create one from the task form with &ldquo;Save as template&rdquo;.</p>
       <div id="templates-list" class="templates-list"></div>
@@ -571,6 +635,8 @@
         <span><kbd>/</kbd> Search tasks</span>
         <span><kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> Workspace / Timer / Achievements</span>
         <span><kbd>w</kbd> Week plan</span>
+        <span><kbd>f</kbd> Focus mode</span>
+        <span><kbd>Ctrl/&#8984;</kbd> <kbd>K</kbd> Search everything</span>
         <span><kbd>?</kbd> This panel</span>
         <span><kbd>Esc</kbd> Close any window</span>
       </div>
@@ -587,11 +653,28 @@
   </div>
 </div>
 
+<!-- ===== Search everything ===== -->
+<div class="modal-overlay" id="palette-overlay">
+  <div class="modal palette-modal">
+    <input type="text" id="palette-input" placeholder="Search tasks, steps, notes, categories…" autocomplete="off" />
+    <div class="palette-results" id="palette-results"></div>
+    <div class="palette-foot"><span><kbd>&uarr;</kbd><kbd>&darr;</kbd> move</span><span><kbd>Enter</kbd> open</span><span><kbd>Esc</kbd> close</span></div>
+  </div>
+</div>
+
+<!-- ===== Focus mode ===== -->
+<div class="focus-overlay" id="focus-overlay">
+  <button type="button" class="icon-btn focus-close" id="focus-close" title="Leave focus mode (Esc)">&times;</button>
+  <div class="focus-inner" id="focus-inner"></div>
+</div>
+
 <!-- ===== Achievement toasts ===== -->
 <div id="toast-container" class="toast-container"></div>
 
 <!-- ===== Pixel cat mascot ===== -->
 <div class="pixel-cat" id="pixel-cat" title="drag me!">
+  <div class="cat-bubble" id="cat-bubble"></div>
+  <div class="cat-zzz" id="cat-zzz"><span>z</span><span>z</span><span>z</span></div>
   <svg class="cat-accessory cat-bow" viewBox="0 0 10 6" xmlns="http://www.w3.org/2000/svg">
     <polygon points="0,0 5,3 0,6" fill="#e08fa0"/>
     <polygon points="10,0 5,3 10,6" fill="#e08fa0"/>
@@ -618,6 +701,6 @@
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=16"></script>
+<script src="app.js?v=19"></script>
 </body>
 </html>

@@ -37,6 +37,13 @@ let categories = loadJSON(CATEGORIES_KEY, DEFAULT_CATEGORIES);
 let priorityQueueOrder = loadJSON(PRIORITY_QUEUE_KEY, []);
 let templates = loadJSON(TEMPLATES_KEY, []);
 let reviews = loadJSON(REVIEWS_KEY, {});
+const PREFS_KEY = "molly-panel-prefs-v1";
+const PREF_DEFAULTS = { pomoWork: 25, pomoBreak: 5, remind: false, remindLead: 15, morning: false, morningTime: "08:00" };
+let prefs = { ...PREF_DEFAULTS, ...loadJSON(PREFS_KEY, {}) };
+function savePrefs() {
+  localStorage.setItem(PREFS_KEY, JSON.stringify(prefs));
+  schedulePush();
+}
 
 function saveTemplates() {
   localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates));
@@ -82,7 +89,7 @@ function updateSyncStatus(state) {
 function collectCloudState() {
   return JSON.parse(JSON.stringify({
     tasks, sessions, unlockedAchievements, categories,
-    priorityQueueOrder, tasksCreatedCount, timerBankedSeconds, templates, reviews,
+    priorityQueueOrder, tasksCreatedCount, timerBankedSeconds, templates, reviews, prefs,
     updatedAt: new Date().toISOString(),
   }));
 }
@@ -112,6 +119,7 @@ function applyCloudState(data) {
   if (data.timerBankedSeconds) { timerBankedSeconds = data.timerBankedSeconds; localStorage.setItem(TIMER_BANK_KEY, JSON.stringify(timerBankedSeconds)); }
   if (Array.isArray(data.templates)) { templates = data.templates; localStorage.setItem(TEMPLATES_KEY, JSON.stringify(templates)); }
   if (data.reviews && typeof data.reviews === "object") { reviews = data.reviews; localStorage.setItem(REVIEWS_KEY, JSON.stringify(reviews)); }
+  if (data.prefs && typeof data.prefs === "object") { prefs = { ...PREF_DEFAULTS, ...data.prefs }; localStorage.setItem(PREFS_KEY, JSON.stringify(prefs)); }
   const migrated = migrateFreeSessions();
   renderAll();
   checkAchievements();
@@ -526,9 +534,11 @@ function renderPriorityQueue() {
     }
     if (overBudget) overflow.push(t);
     const pMeta = PRIORITY_META[t.priority] || PRIORITY_META.medium;
-    const isOverdue = t.dueDate < today;
-    const lateDays = Math.round((new Date(today + "T00:00:00") - new Date(t.dueDate + "T00:00:00")) / 86400000);
-    const dateLabel = new Date(t.dueDate + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const dueD = t.dueDate || today;
+    const isOverdue = dueD < today;
+    const lateDays = Math.round((new Date(today + "T00:00:00") - new Date(dueD + "T00:00:00")) / 86400000);
+    const dateLabel = new Date(dueD + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    const stepNow = openStepFor(t, today);
 
     const row = document.createElement("div");
     row.className = "priority-queue-item" + (overBudget ? " pq-over" : "");
@@ -536,7 +546,7 @@ function renderPriorityQueue() {
     row.dataset.id = t.id;
     row.innerHTML = `
       <span class="pq-rank">${i + 1}</span>
-      <span class="pq-title" title="${escapeAttr(t.title)}">${escapeHtml(t.title)}</span>
+      <span class="pq-title" title="${escapeAttr(t.title)}">${escapeHtml(t.title)}${stepNow ? `<small class="pq-step">&#9656; ${escapeHtml(stepNow.text)}</small>` : ""}</span>
       <span class="pq-due${isOverdue ? " overdue" : ""}" title="${dateLabel}">${isOverdue ? lateDays + "d late" : "today"}</span>
       <span class="pq-priority" style="background:${pMeta.color}" title="${pMeta.label}">${PQ_SHORT[t.priority] || "MED"}</span>
       <button type="button" class="pq-start" title="Start the timer on this task">&#9654;</button>
@@ -694,7 +704,7 @@ function renderTasks() {
   const viewingToday = selectedDate === today;
   const showOverdue = searching || !selectedDate || viewingToday;
 
-  let visible = tasks.slice();
+  let visible = tasks.filter(t => !t.archived || searching || (selectedDate && t.completedOn === selectedDate));
   if (searching) {
     visible = visible.filter(t =>
       (t.title || "").toLowerCase().includes(searchTerm) ||
@@ -972,6 +982,7 @@ function cycleTaskStatus(id) {
   saveTasks();
   renderAll();
   checkAchievements();
+  if (t.completed) catCheer(t);
 }
 
 document.getElementById("category-filter").addEventListener("change", renderTasks);
@@ -1665,6 +1676,7 @@ function syncTimerFromClock() {
     return;
   }
   updateTimerDisplay();
+  if (typeof pomodoroCheck === "function") pomodoroCheck();
 }
 
 function autoPauseTimer() {
@@ -1721,8 +1733,9 @@ function populateTimerTaskSelect() {
     .forEach(t => {
       const opt = document.createElement("option");
       opt.value = t.id;
-      const overdueTag = t.dueDate < today ? " — Overdue" : "";
-      opt.textContent = `${t.title} (${t.category})${overdueTag}`;
+      const overdueTag = t.dueDate && t.dueDate < today ? " — Overdue" : "";
+      const st = openStepFor(t, today);
+      opt.textContent = `${t.title} (${t.category})${overdueTag}${st ? " ▸ " + st.text : ""}`;
       select.appendChild(opt);
     });
   if (current && eligible.some(t => t.id === current)) {
@@ -1905,6 +1918,7 @@ document.getElementById("timer-complete").addEventListener("click", () => {
 
   renderAll();
   checkAchievements();
+  catCheer(task);
 });
 
 /* ===================== Free timer ===================== */
@@ -2168,6 +2182,7 @@ function reloadStateFromStorage() {
   timerBankedSeconds = loadJSON(TIMER_BANK_KEY, {});
   templates = loadJSON(TEMPLATES_KEY, []);
   reviews = loadJSON(REVIEWS_KEY, {});
+  prefs = { ...PREF_DEFAULTS, ...loadJSON(PREFS_KEY, {}) };
   renderAll();
   applyTaskTimerState();
 }
@@ -2181,7 +2196,7 @@ window.addEventListener("storage", (e) => {
     clearInterval(freeTimerInterval);
     if (freeTimer.startedAt) startFreeTimerInterval();
     renderFreeTimer();
-  } else if ([STORAGE_KEY, SESSIONS_KEY, ACHIEVEMENTS_KEY, CATEGORIES_KEY, PRIORITY_QUEUE_KEY, TASKS_CREATED_KEY, TIMER_BANK_KEY, TEMPLATES_KEY, REVIEWS_KEY].includes(e.key) || e.key === null) {
+  } else if ([STORAGE_KEY, SESSIONS_KEY, ACHIEVEMENTS_KEY, CATEGORIES_KEY, PRIORITY_QUEUE_KEY, TASKS_CREATED_KEY, TIMER_BANK_KEY, TEMPLATES_KEY, REVIEWS_KEY, PREFS_KEY].includes(e.key) || e.key === null) {
     reloadStateFromStorage();
   }
 });
@@ -2800,7 +2815,9 @@ document.getElementById("import-backup-file").addEventListener("change", (e) => 
 document.addEventListener("keydown", (e) => {
   if (e.metaKey || e.ctrlKey || e.altKey) return;
   if (e.key === "Escape") {
-    if (document.getElementById("review-overlay").classList.contains("open")) closeReview();
+    if (document.getElementById("focus-overlay").classList.contains("open")) closeFocus();
+    else if (document.getElementById("palette-overlay").classList.contains("open")) closePalette();
+    else if (document.getElementById("review-overlay").classList.contains("open")) closeReview();
     else if (document.getElementById("settings-overlay").classList.contains("open")) closeSettings();
     else if (overlay.classList.contains("open")) closeModal();
     return;
@@ -2816,6 +2833,7 @@ document.addEventListener("keydown", (e) => {
     case "2": switchTab("pomodoro"); break;
     case "3": switchTab("achievements"); break;
     case "w": switchTab("week"); break;
+    case "f": e.preventDefault(); openFocus(); break;
     case "?": e.preventDefault(); openSettings(); break;
   }
 });
@@ -3203,9 +3221,15 @@ document.querySelectorAll("[data-review-week]").forEach(btn => {
 /* ===================== Week plan ===================== */
 let weekOffset = 0;
 
+function openStepFor(t, today) {
+  // first unfinished step planned for today or earlier
+  return (t.subtasks || []).find(x => !x.done && x.day && x.day <= today) || null;
+}
 function isWorkableToday(t, today) {
-  if (t.completed || !t.dueDate) return false;
+  if (t.completed || t.archived) return false;
+  if (!t.dueDate) return !!openStepFor(t, today);
   if (t.dueDate <= today) return true;
+  if (openStepFor(t, today)) return true;
   return !!(t.startDate && t.startDate <= today);
 }
 
@@ -3239,6 +3263,8 @@ function renderWeek() {
   const today = todayStr();
   const fmt = (d, o) => new Date(d + "T12:00:00").toLocaleDateString(undefined, o);
 
+  const capInput = document.getElementById("week-capacity");
+  if (document.activeElement !== capInput) capInput.value = weekCapacityHours();
   document.getElementById("week-range-label").textContent =
     `${fmt(startStr, { month: "short", day: "numeric" })} – ${fmt(endStr, { month: "short", day: "numeric" })}` +
     (weekOffset === 0 ? " · this week" : weekOffset === 1 ? " · next week" : weekOffset === -1 ? " · last week" : "");
@@ -3250,7 +3276,7 @@ function renderWeek() {
   ).join("");
 
   // multi-day bars
-  const span = tasks.filter(t => t.startDate && t.dueDate && t.startDate < t.dueDate && t.startDate <= endStr && t.dueDate >= startStr);
+  const span = tasks.filter(t => !t.archived && t.startDate && t.dueDate && t.startDate < t.dueDate && t.startDate <= endStr && t.dueDate >= startStr);
   span.sort((a, b) => a.startDate.localeCompare(b.startDate) || a.dueDate.localeCompare(b.dueDate));
   const bars = document.getElementById("week-bars");
   bars.innerHTML = "";
@@ -3280,9 +3306,12 @@ function renderWeek() {
   const box = document.getElementById("week-days");
   box.innerHTML = "";
   days.forEach(d => {
-    const due = tasks.filter(t => t.dueDate === d || (t.completed && t.completedOn === d && t.dueDate !== d));
+    const due = tasks.filter(t => !t.archived && (t.dueDate === d || (t.completed && t.completedOn === d && t.dueDate !== d)));
     const open = due.filter(t => !t.completed);
     const mins = open.reduce((sum, t) => sum + (Number(t.estimate) || 0), 0);
+    const capMin = Math.round(weekCapacityHours() * 60);
+    const over = d >= today && mins > capMin;
+    const pct = capMin ? Math.min(100, Math.round(mins / capMin * 100)) : 0;
     const working = tasks.filter(t => !t.completed && t.startDate && t.dueDate && t.startDate <= d && d < t.dueDate);
     const col = document.createElement("div");
     col.className = "week-day" + (d === today ? " is-today" : "") + (d < today ? " is-past" : "");
@@ -3291,8 +3320,21 @@ function renderWeek() {
         <strong>${fmt(d, { weekday: "short" })} ${fmt(d, { day: "numeric" })}</strong>
         <span>${open.length ? open.length + " task" + (open.length === 1 ? "" : "s") + (mins ? " · " + formatMinutesLabel(mins) : "") : "free"}</span>
       </div>
+      ${d >= today || mins ? `<div class="week-cap${over ? " over" : ""}" title="${formatMinutesLabel(mins)} planned of ${formatMinutesLabel(capMin)}"><i style="width:${pct}%"></i></div>` : ""}
+      ${over ? `<button type="button" class="week-rebalance" title="Move the lowest-priority tasks to lighter days">Over by ${formatMinutesLabel(mins - capMin)} &middot; Rebalance</button>` : ""}
       <div class="week-day-list"></div>
       <button type="button" class="week-day-add" title="Add a task on this day">+ add</button>`;
+    const rb = col.querySelector(".week-rebalance");
+    if (rb) rb.addEventListener("click", () => rebalanceDay(d, days));
+    col.addEventListener("dragover", (e) => { if (weekDragId) { e.preventDefault(); col.classList.add("drop-target"); } });
+    col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("drop-target"); });
+    col.addEventListener("drop", (e) => {
+      e.preventDefault();
+      col.classList.remove("drop-target");
+      const id = weekDragId; weekDragId = null;
+      const t = tasks.find(x => x.id === id);
+      if (t && t.dueDate !== d) moveTaskToDate(t, d, `Moved “${t.title}” to ${fmt(d, { weekday: "long" })}`);
+    });
     col.querySelector(".week-day-add").addEventListener("click", () => { openModal(); document.getElementById("task-due-date").value = d; });
     const list = col.querySelector(".week-day-list");
     working.forEach(t => {
@@ -3305,7 +3347,7 @@ function renderWeek() {
       list.appendChild(chip);
     });
     const steps = [];
-    tasks.forEach(t => (t.subtasks || []).forEach((x, si) => { if (x.day === d && !t.completed) steps.push({ t, x, si }); }));
+    tasks.forEach(t => (t.subtasks || []).forEach((x, si) => { if (x.day === d && !t.completed && !t.archived) steps.push({ t, x, si }); }));
     steps.sort((a, b) => (a.x.done - b.x.done));
     steps.forEach(({ t, x }) => {
       const row = document.createElement("div");
@@ -3326,13 +3368,18 @@ function renderWeek() {
       const status = getTaskStatus(t);
       const row = document.createElement("div");
       row.className = "week-task" + (t.completed ? " is-done" : "");
+      if (!t.completed) {
+        row.draggable = true;
+        row.addEventListener("dragstart", (e) => { weekDragId = t.id; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", t.id); } catch (_) {} });
+        row.addEventListener("dragend", () => { weekDragId = null; row.classList.remove("dragging"); document.querySelectorAll(".week-day.drop-target").forEach(c => c.classList.remove("drop-target")); });
+      }
       const cc = getCategoryColor(t.category);
       row.style.background = `${cc}33`;
       row.style.borderColor = cc;
       row.title = `${t.category || "No category"}${t.estimate ? " · " + t.estimate + " min" : ""}`;
       row.innerHTML = `
         <span class="task-checkbox status-${status}" title="${STATUS_META[status].label} — click to change">${STATUS_META[status].icon}</span>
-        <span class="week-task-title">${escapeHtml(t.title)}<small class="week-task-sub"><span class="week-cat-dot" style="background:${cc}"></span>${escapeHtml(t.category || "")}${t.estimate ? `<b>${formatMinutesLabel(t.estimate)}</b>` : ""}</small></span>
+        <span class="week-task-title">${escapeHtml(t.title)}<small class="week-task-sub"><span class="week-cat-dot" style="background:${cc}"></span><span class="week-cat-name">${escapeHtml(t.category || "")}</span>${t.estimate ? `<b>${formatMinutesLabel(t.estimate)}</b>` : ""}</small></span>
         ${t.startDate && t.startDate < t.dueDate && t.dueDate === d ? `<span class="week-due-tag">due</span>` : ""}`;
       row.querySelector(".task-checkbox").addEventListener("click", (e) => { e.stopPropagation(); cycleTaskStatus(t.id); });
       row.addEventListener("click", () => openModal(t.id));
@@ -3368,6 +3415,693 @@ document.getElementById("week-add-big").addEventListener("click", () => {
   document.getElementById("task-due-date").value = fri >= start ? fri : dateShift(start, 2);
 });
 
+/* ===================== Upgrade 3: capacity, goals, pomodoro, focus, insights ===================== */
+let weekDragId = null;
+
+function weekCapacityHours() {
+  return Number(loadJSON(BUDGET_KEY, 6)) || 6;
+}
+
+document.getElementById("week-capacity").addEventListener("change", (e) => {
+  let v = parseFloat(e.target.value);
+  if (!(v > 0)) v = 6;
+  v = Math.min(16, Math.max(0.5, v));
+  localStorage.setItem(BUDGET_KEY, JSON.stringify(v));
+  e.target.value = v;
+  renderPriorityQueue();
+  renderWeek();
+});
+document.getElementById("day-budget-hours").addEventListener("change", () => renderWeek());
+
+/* ---------- move / rebalance ---------- */
+function moveTaskToDate(t, date, message) {
+  const snap = snapshotState();
+  if (t.recurringId) markOccurrenceOverrides(t, { ...t, dueDate: date });
+  t.dueDate = date;
+  if (t.startDate && t.startDate > date) delete t.startDate;
+  saveTasks();
+  renderAll();
+  showUndoToast(message, snap);
+}
+
+function rebalanceDay(d, days) {
+  const today = todayStr();
+  const cap = Math.round(weekCapacityHours() * 60);
+  const est = t => Number(t.estimate) || 0;
+  const open = day => tasks.filter(t => !t.completed && !t.archived && t.dueDate === day);
+  const load = {};
+  days.forEach(x => { load[x] = open(x).reduce((s, t) => s + est(t), 0); });
+  const rank = { low: 1, medium: 2, "time-sensitive": 3, high: 3 };
+  const candidates = open(d).filter(t => est(t) > 0 && t.priority !== "time-sensitive" && !t.dueTime)
+    .sort((a, b) => (rank[a.priority] || 2) - (rank[b.priority] || 2) || est(b) - est(a));
+  const targets = days.filter(x => x !== d && x >= today);
+  const snap = snapshotState();
+  let moved = 0;
+  for (const t of candidates) {
+    if (load[d] <= cap) break;
+    const fits = targets
+      .filter(x => load[x] + est(t) <= cap && !(t.startDate && false))
+      .sort((a, b) => load[a] - load[b] || a.localeCompare(b));
+    if (!fits.length) continue;
+    const to = fits[0];
+    if (t.recurringId) markOccurrenceOverrides(t, { ...t, dueDate: to });
+    load[d] -= est(t); load[to] += est(t);
+    t.dueDate = to;
+    if (t.startDate && t.startDate > to) delete t.startDate;
+    moved++;
+  }
+  if (!moved) {
+    showSimpleToast("Nothing to move", "No other day this week has room, or the tasks on this day have fixed times or no estimates.");
+    return;
+  }
+  saveTasks();
+  renderAll();
+  showUndoToast(`Moved ${moved} task${moved === 1 ? "" : "s"} to lighter days`, snap);
+}
+
+/* ---------- weekly goals (stored inside reviews[weekKey].goals so they sync + back up) ---------- */
+function currentGoals() {
+  const r = reviews[weekKeyFor(weekOffset)];
+  return (r && Array.isArray(r.goals)) ? r.goals : [];
+}
+function saveGoals(goals) {
+  const key = weekKeyFor(weekOffset);
+  reviews[key] = { ...(reviews[key] || {}), goals };
+  saveReviews();
+  renderWeekGoals();
+}
+function renderWeekGoals() {
+  const list = document.getElementById("week-goal-list");
+  if (!list) return;
+  const goals = currentGoals();
+  const done = goals.filter(g => g.done).length;
+  document.getElementById("week-goals-count").textContent = goals.length ? `${done}/${goals.length} done` : "What matters most this week?";
+  list.innerHTML = "";
+  goals.forEach((g, i) => {
+    const row = document.createElement("div");
+    row.className = "week-goal" + (g.done ? " is-done" : "");
+    row.innerHTML = `<span class="sub-box${g.done ? " done" : ""}">&#10003;</span><span class="week-goal-text">${escapeHtml(g.text)}</span><button type="button" class="sub-del" title="Remove goal">&times;</button>`;
+    row.querySelector(".sub-box").addEventListener("click", () => {
+      const next = goals.map((x, j) => j === i ? { ...x, done: !x.done } : x);
+      saveGoals(next);
+      if (next.every(x => x.done)) { catSay("All weekly goals done!"); triggerCatCelebrate(); }
+    });
+    row.querySelector(".week-goal-text").addEventListener("click", () => {
+      const nt = prompt("Edit goal", g.text);
+      if (nt && nt.trim()) saveGoals(goals.map((x, j) => j === i ? { ...x, text: nt.trim().slice(0, 100) } : x));
+    });
+    row.querySelector(".sub-del").addEventListener("click", () => saveGoals(goals.filter((_, j) => j !== i)));
+    list.appendChild(row);
+  });
+}
+function addWeekGoal() {
+  const input = document.getElementById("week-goal-new");
+  const text = input.value.trim();
+  if (!text) return;
+  saveGoals([...currentGoals(), { id: uid(), text, done: false }]);
+  input.value = "";
+  input.focus();
+}
+document.getElementById("week-goal-add-btn").addEventListener("click", addWeekGoal);
+document.getElementById("week-goal-new").addEventListener("keydown", (e) => { if (e.key === "Enter") { e.preventDefault(); addWeekGoal(); } });
+["week-prev", "week-next", "week-today"].forEach(id => document.getElementById(id).addEventListener("click", renderWeekGoals));
+
+/* ---------- spread steps across days ---------- */
+document.getElementById("spread-steps-btn").addEventListener("click", () => {
+  const due = document.getElementById("task-due-date").value;
+  if (!due) { showSimpleToast("Set a due date first", "Steps are spread between the start date and the due date."); return; }
+  const today = todayStr();
+  const start = document.getElementById("task-start-date").value || (today <= due ? today : due);
+  const skipWk = document.getElementById("spread-skip-weekends").checked;
+  let days = [];
+  for (let d = start, n = 0; d <= due && n < 60; d = dateShift(d, 1), n++) days.push(d);
+  if (skipWk) {
+    const wk = days.filter(d => { const g = new Date(d + "T12:00:00").getDay(); return g !== 0 && g !== 6; });
+    if (wk.length) days = wk;
+  }
+  const pending = modalSubtasks.filter(x => !x.done && !x.day && String(x.text || "").trim());
+  if (!pending.length) { showSimpleToast("No steps to spread", "Add some steps first. Steps that already have a day are left alone."); return; }
+  pending.forEach((x, i) => { x.day = days[Math.min(days.length - 1, Math.floor(i * days.length / pending.length))]; });
+  renderSubtaskEditor();
+  showSimpleToast("Steps spread out", `${pending.length} step${pending.length === 1 ? "" : "s"} placed across ${days.length} day${days.length === 1 ? "" : "s"}. Adjust any of them below.`);
+});
+
+/* ---------- calendar export ---------- */
+function icsEscape(s) {
+  return String(s || "").replace(/\\/g, "\\\\").replace(/;/g, "\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n");
+}
+function icsLocal(dateStr, timeStr, addMin) {
+  const [y, m, d] = dateStr.split("-").map(Number);
+  const [hh, mm] = (timeStr || "00:00").split(":").map(Number);
+  const dt = new Date(y, m - 1, d, hh, mm + (addMin || 0));
+  const p = n => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}${p(dt.getMonth() + 1)}${p(dt.getDate())}T${p(dt.getHours())}${p(dt.getMinutes())}00`;
+}
+function icsDay(dateStr, plus) {
+  return dateShift(dateStr, plus || 0).replace(/-/g, "");
+}
+function buildIcs(list) {
+  const stamp = new Date().toISOString().replace(/[-:]/g, "").replace(/\.\d+/, "");
+  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Molly's Panel//EN", "CALSCALE:GREGORIAN"];
+  const ev = (uid, summary, desc, startLine, endLine) => {
+    lines.push("BEGIN:VEVENT", `UID:${uid}@molly-panel`, `DTSTAMP:${stamp}`, startLine, endLine,
+      `SUMMARY:${icsEscape(summary)}`, `DESCRIPTION:${icsEscape(desc)}`, "END:VEVENT");
+  };
+  list.forEach(t => {
+    if (!t.dueDate) return;
+    const desc = [t.category, t.notes, t.link].filter(Boolean).join("\n");
+    if (t.dueTime) {
+      ev(t.id, t.title, desc, `DTSTART:${icsLocal(t.dueDate, t.dueTime)}`, `DTEND:${icsLocal(t.dueDate, t.dueTime, Number(t.estimate) || 30)}`);
+    } else {
+      ev(t.id, t.title, desc, `DTSTART;VALUE=DATE:${icsDay(t.dueDate)}`, `DTEND;VALUE=DATE:${icsDay(t.dueDate, 1)}`);
+    }
+    (t.subtasks || []).forEach(x => {
+      if (x.day && !x.done) ev(x.id || uid(), `${x.text} (${t.title})`, `Step of “${t.title}”`, `DTSTART;VALUE=DATE:${icsDay(x.day)}`, `DTEND;VALUE=DATE:${icsDay(x.day, 1)}`);
+    });
+  });
+  lines.push("END:VCALENDAR");
+  return lines.join("\r\n");
+}
+async function downloadFile(filename, text, mime) {
+  if (window.claude && typeof window.claude.use === "function") {
+    const dl = await window.claude.use("downloads");
+    if (!dl) throw new Error("no downloads");
+    await dl.save({ filename, data: text });
+    return;
+  }
+  const blob = new Blob([text], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+async function exportIcs(list, name) {
+  const items = list.filter(t => t.dueDate && !t.completed && !t.archived);
+  const stepCount = items.reduce((n, t) => n + (t.subtasks || []).filter(x => x.day && !x.done).length, 0);
+  if (!items.length) { showSimpleToast("Nothing to export", "No open tasks with a due date in that range."); return; }
+  try {
+    await downloadFile(name, buildIcs(items), "text/calendar");
+    showSimpleToast("Calendar file saved", `${items.length} task${items.length === 1 ? "" : "s"}${stepCount ? ` and ${stepCount} step${stepCount === 1 ? "" : "s"}` : ""}. Open it to add them to Google Calendar, Apple Calendar or Outlook.`);
+  } catch (err) {
+    if (err && err.code === "declined") return;
+    showSimpleToast("Couldn't download", "Your browser blocked the download here. Try the GitHub Pages version of the site.");
+  }
+}
+document.getElementById("week-export").addEventListener("click", () => {
+  const start = formatDate(getWeekRange(weekOffset).start);
+  const end = dateShift(start, 6);
+  exportIcs(tasks.filter(t => t.dueDate >= start && t.dueDate <= end || (t.subtasks || []).some(x => x.day >= start && x.day <= end)), `molly-panel-week-${start}.ics`);
+});
+document.getElementById("export-ics-btn").addEventListener("click", () => exportIcs(tasks, `molly-panel-tasks-${todayStr()}.ics`));
+
+document.getElementById("gcal-link").addEventListener("click", (e) => {
+  const title = document.getElementById("task-title").value.trim();
+  const due = document.getElementById("task-due-date").value;
+  if (!title || !due) { e.preventDefault(); showSimpleToast("Add a title and due date", "Then you can send the task to Google Calendar."); return; }
+  const time = document.getElementById("task-due-time").value;
+  const mins = Number(document.getElementById("task-estimate").value) || 30;
+  const dates = time ? `${icsLocal(due, time)}/${icsLocal(due, time, mins)}` : `${icsDay(due)}/${icsDay(due, 1)}`;
+  const details = [document.getElementById("task-notes").value.trim(), document.getElementById("task-link").value.trim()].filter(Boolean).join("\n");
+  e.currentTarget.href = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(title)}&dates=${dates}&details=${encodeURIComponent(details)}`;
+});
+// keep the Google Calendar link visible in the task form
+document.getElementById("gcal-link").style.display = "inline-block";
+
+/* ---------- Pomodoro ---------- */
+let pomoSegStart = null;
+let pomoBreakInterval = null;
+let pomoBreakEndsAt = 0;
+let pomoBreakOver = false;
+const POMO_COUNT_KEY = "molly-panel-pomo-count-v1";
+
+function pomoCountToday() {
+  const s = loadJSON(POMO_COUNT_KEY, {});
+  return s.date === todayStr() ? (s.n || 0) : 0;
+}
+function pomoBumpCount() {
+  localStorage.setItem(POMO_COUNT_KEY, JSON.stringify({ date: todayStr(), n: pomoCountToday() + 1 }));
+}
+function updatePomoHint() {
+  const on = !!prefs.pomo;
+  document.getElementById("pomo-enabled").checked = on;
+  const n = pomoCountToday();
+  document.getElementById("pomo-hint").textContent = on
+    ? `${prefs.pomoWork} min work · ${prefs.pomoBreak} min break${n ? ` · ${n} round${n === 1 ? "" : "s"} today` : ""}`
+    : "";
+}
+document.getElementById("pomo-enabled").addEventListener("change", (e) => {
+  prefs.pomo = e.target.checked;
+  savePrefs();
+  pomoSegStart = timerRunning ? timerSeconds : null;
+  endPomoBreak(false);
+  updatePomoHint();
+});
+document.getElementById("timer-toggle").addEventListener("click", () => {
+  if (pomoBreakInterval || pomoBreakOver) endPomoBreak(false);
+  pomoSegStart = timerRunning ? timerSeconds : null;
+});
+document.getElementById("timer-reset").addEventListener("click", () => { pomoSegStart = null; endPomoBreak(false); });
+
+function pomodoroCheck() {
+  if (!prefs.pomo || !timerRunning) return;
+  if (pomoSegStart === null) { pomoSegStart = timerSeconds; return; }
+  if (timerSeconds - pomoSegStart >= prefs.pomoWork * 60) startPomoBreak();
+}
+function startPomoBreak() {
+  pomoSegStart = null;
+  document.getElementById("timer-toggle").click();   // pauses and banks the time
+  pomoSegStart = null;
+  pomoBumpCount();
+  updatePomoHint();
+  pomoBreakOver = false;
+  pomoBreakEndsAt = Date.now() + prefs.pomoBreak * 60 * 1000;
+  const box = document.getElementById("pomo-break");
+  box.style.display = "flex";
+  box.classList.remove("done");
+  document.getElementById("pomo-break-title").textContent = "Break time";
+  document.getElementById("pomo-skip").textContent = "Skip break";
+  playBeep();
+  notifyUser("Break time", `Nice focus. Stretch for ${prefs.pomoBreak} minutes.`);
+  catSay("Break time! Stretch.");
+  clearInterval(pomoBreakInterval);
+  tickPomoBreak();
+  pomoBreakInterval = setInterval(tickPomoBreak, 500);
+}
+function tickPomoBreak() {
+  const left = Math.max(0, Math.ceil((pomoBreakEndsAt - Date.now()) / 1000));
+  document.getElementById("pomo-break-time").textContent = formatTimer(left);
+  if (left <= 0) {
+    clearInterval(pomoBreakInterval);
+    pomoBreakInterval = null;
+    pomoBreakOver = true;
+    document.getElementById("pomo-break").classList.add("done");
+    document.getElementById("pomo-break-title").textContent = "Break's over";
+    document.getElementById("pomo-skip").textContent = "Resume work";
+    playBeep();
+    notifyUser("Break's over", "Ready for the next round?");
+  }
+}
+function endPomoBreak() {
+  clearInterval(pomoBreakInterval);
+  pomoBreakInterval = null;
+  pomoBreakOver = false;
+  document.getElementById("pomo-break").style.display = "none";
+}
+document.getElementById("pomo-skip").addEventListener("click", () => {
+  endPomoBreak();
+  if (!timerRunning && timerTaskId) document.getElementById("timer-toggle").click();
+});
+
+/* ---------- reminders + notifications ---------- */
+const NOTIFIED_KEY = "molly-panel-notified-v1";
+function notifyUser(title, body) {
+  showSimpleToast(title, body);
+  try {
+    if ("Notification" in window && Notification.permission === "granted" && document.visibilityState !== "visible") {
+      new Notification(title, { body });
+    }
+  } catch (_) { /* notifications unavailable */ }
+}
+function checkReminders() {
+  if (!prefs.remind && !prefs.morning) return;
+  const now = new Date();
+  const today = todayStr();
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  let sent = loadJSON(NOTIFIED_KEY, {});
+  if (sent.date !== today) sent = { date: today, ids: [], morning: false };
+  let changed = false;
+  if (prefs.remind) {
+    tasks.forEach(t => {
+      if (t.completed || t.archived || t.dueDate !== today || !t.dueTime || sent.ids.includes(t.id)) return;
+      const [h, m] = t.dueTime.split(":").map(Number);
+      const dm = h * 60 + m;
+      if (nowMin >= dm - prefs.remindLead && nowMin <= dm + 30) {
+        sent.ids.push(t.id); changed = true;
+        const diff = dm - nowMin;
+        notifyUser(diff > 0 ? `Due in ${diff} min` : "Due now", t.title);
+      }
+    });
+  }
+  if (prefs.morning && !sent.morning) {
+    const [h, m] = (prefs.morningTime || "08:00").split(":").map(Number);
+    if (nowMin >= h * 60 + m && nowMin <= h * 60 + m + 180) {
+      sent.morning = true; changed = true;
+      const open = tasks.filter(t => isWorkableToday(t, today));
+      const mins = open.reduce((s, t) => s + (Number(t.estimate) || 0), 0);
+      const first = priorityQueueOrder.map(id => open.find(t => t.id === id)).filter(Boolean)[0];
+      notifyUser("Good morning, Molly", open.length
+        ? `${open.length} task${open.length === 1 ? "" : "s"} today${mins ? " (" + formatMinutesLabel(mins) + ")" : ""}. First up: ${first ? first.title : open[0].title}.`
+        : "Nothing planned today. Enjoy the space.");
+    }
+  }
+  if (changed) localStorage.setItem(NOTIFIED_KEY, JSON.stringify(sent));
+}
+setInterval(checkReminders, 30 * 1000);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") checkReminders(); });
+
+function renderPrefsUi() {
+  const set = (id, v) => { const el = document.getElementById(id); if (el && document.activeElement !== el) { if (el.type === "checkbox") el.checked = !!v; else el.value = v; } };
+  set("pref-pomo-work", prefs.pomoWork); set("pref-pomo-break", prefs.pomoBreak);
+  set("pref-remind", prefs.remind); set("pref-remind-lead", prefs.remindLead);
+  set("pref-morning", prefs.morning); set("pref-morning-time", prefs.morningTime);
+  updatePomoHint();
+  const note = document.getElementById("remind-note");
+  if (note) {
+    const perm = ("Notification" in window) ? Notification.permission : "unsupported";
+    note.textContent = "Reminders always show as a pop-up in the app while it's open." +
+      (perm === "granted" ? " Browser notifications are on too." : perm === "denied" ? " Browser notifications are blocked for this site." : perm === "unsupported" ? "" : " Turn a reminder on to also allow browser notifications.");
+  }
+}
+function bindPref(id, key, parse) {
+  document.getElementById(id).addEventListener("change", (e) => {
+    const el = e.target;
+    let v = el.type === "checkbox" ? el.checked : parse(el.value);
+    if (v === null || v === undefined || (typeof v === "number" && !(v > 0))) { renderPrefsUi(); return; }
+    prefs[key] = v;
+    savePrefs();
+    if ((key === "remind" || key === "morning") && v && "Notification" in window && Notification.permission === "default") {
+      try { Notification.requestPermission().then(renderPrefsUi); } catch (_) {}
+    }
+    renderPrefsUi();
+    checkReminders();
+  });
+}
+bindPref("pref-pomo-work", "pomoWork", v => Math.min(90, Math.max(5, parseInt(v, 10))));
+bindPref("pref-pomo-break", "pomoBreak", v => Math.min(30, Math.max(1, parseInt(v, 10))));
+bindPref("pref-remind", "remind", v => v);
+bindPref("pref-remind-lead", "remindLead", v => Math.min(120, Math.max(1, parseInt(v, 10))));
+bindPref("pref-morning", "morning", v => v);
+bindPref("pref-morning-time", "morningTime", v => v || null);
+
+/* ---------- archive ---------- */
+function archiveCandidates() {
+  const cutoff = dateShift(todayStr(), -30);
+  return tasks.filter(t => t.completed && !t.archived && t.completedOn && t.completedOn < cutoff);
+}
+function refreshArchiveUi() {
+  const note = document.getElementById("archive-note");
+  if (!note) return;
+  const n = tasks.filter(t => t.archived).length;
+  const c = archiveCandidates().length;
+  note.textContent = `Archiving hides completed tasks older than 30 days from the lists. They still count in your stats and can be found with search. ${c} ready to archive now${n ? `, ${n} already archived` : ""}.`;
+  document.getElementById("unarchive-btn").style.display = n ? "inline-block" : "none";
+}
+document.getElementById("archive-btn").addEventListener("click", () => {
+  const list = archiveCandidates();
+  if (!list.length) { showSimpleToast("Nothing to archive", "No completed tasks older than 30 days."); return; }
+  const snap = snapshotState();
+  list.forEach(t => { t.archived = true; });
+  saveTasks(); renderAll(); closeSettings();
+  showUndoToast(`Archived ${list.length} old completed task${list.length === 1 ? "" : "s"}`, snap);
+});
+document.getElementById("unarchive-btn").addEventListener("click", () => {
+  const snap = snapshotState();
+  const n = tasks.filter(t => t.archived).length;
+  tasks.forEach(t => { delete t.archived; });
+  saveTasks(); renderAll(); closeSettings();
+  showUndoToast(`Restored ${n} archived task${n === 1 ? "" : "s"}`, snap);
+});
+
+/* ---------- heatmap ---------- */
+function renderHeatmap() {
+  const grid = document.getElementById("heatmap");
+  if (!grid) return;
+  const today = todayStr();
+  const weeks = 26;
+  const thisMonday = formatDate(getWeekRange(0).start);
+  const first = dateShift(thisMonday, -(weeks - 1) * 7);
+  const doneBy = {}, minBy = {};
+  tasks.forEach(t => { if (t.completed && t.completedOn) doneBy[t.completedOn] = (doneBy[t.completedOn] || 0) + 1; });
+  sessions.forEach(s => { minBy[s.date] = (minBy[s.date] || 0) + (Number(s.minutes) || 0); });
+  let html = "", active = 0, bestDay = 0;
+  for (let i = 0; i < weeks * 7; i++) {
+    const d = dateShift(first, i);
+    if (d > today) { html += `<i class="hm-cell hm-future"></i>`; continue; }
+    const n = doneBy[d] || 0, m = minBy[d] || 0;
+    const score = n + Math.floor(m / 30);
+    const lvl = score === 0 ? 0 : score === 1 ? 1 : score <= 3 ? 2 : score <= 5 ? 3 : 4;
+    if (score > 0) active++;
+    bestDay = Math.max(bestDay, score);
+    const label = new Date(d + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+    html += `<i class="hm-cell hm${lvl}" title="${label}: ${n} task${n === 1 ? "" : "s"} done${m ? ", " + formatMinutesLabel(m) + " tracked" : ""}"></i>`;
+  }
+  grid.innerHTML = html;
+  const streak = typeof computeDayStreak === "function" ? computeDayStreak() : 0;
+  document.getElementById("heatmap-note").textContent = `${active} active day${active === 1 ? "" : "s"} in the last 6 months${streak ? ` · ${streak}-day streak` : ""}`;
+}
+
+/* ---------- estimates vs reality ---------- */
+function renderEstimates() {
+  const body = document.getElementById("estimates-body");
+  if (!body) return;
+  const actualOf = id => sessions.filter(s => s.taskId === id).reduce((sum, s) => sum + (Number(s.minutes) || 0), 0);
+  const rows = tasks.filter(t => t.completed && Number(t.estimate) > 0).map(t => ({ t, est: Number(t.estimate), act: actualOf(t.id) })).filter(r => r.act > 0);
+  if (rows.length < 3) {
+    body.innerHTML = `<p class="insight-empty">Finish a few tasks that have an estimate and tracked time (timer or manual log). Your estimate accuracy will show up here. ${rows.length}/3 so far.</p>`;
+    document.getElementById("estimates-note").textContent = "";
+    return;
+  }
+  const byCat = {};
+  rows.forEach(r => {
+    const c = byCat[r.t.category || "Other"] = byCat[r.t.category || "Other"] || { est: 0, act: 0, n: 0 };
+    c.est += r.est; c.act += r.act; c.n++;
+  });
+  const totEst = rows.reduce((s, r) => s + r.est, 0), totAct = rows.reduce((s, r) => s + r.act, 0);
+  const pctOff = Math.round((totAct - totEst) / totEst * 100);
+  document.getElementById("estimates-note").textContent = Math.abs(pctOff) < 8
+    ? `${rows.length} tasks · your estimates are right on`
+    : `${rows.length} tasks · you ${pctOff > 0 ? "underestimate" : "overestimate"} by about ${Math.abs(pctOff)}%`;
+  const max = Math.max(...Object.values(byCat).map(c => Math.max(c.est, c.act)));
+  const catRows = Object.entries(byCat).sort((a, b) => b[1].act - a[1].act).map(([name, c]) => {
+    const diff = Math.round((c.act - c.est) / c.est * 100);
+    const color = getCategoryColor(name);
+    return `<div class="est-row">
+      <div class="est-name"><span class="week-cat-dot" style="background:${color}"></span>${escapeHtml(name)} <small>${c.n} task${c.n === 1 ? "" : "s"}</small></div>
+      <div class="est-bars">
+        <div class="est-bar est"><i style="width:${c.est / max * 100}%"></i><span>planned ${formatMinutesLabel(c.est)}</span></div>
+        <div class="est-bar act ${diff > 10 ? "over" : ""}"><i style="width:${c.act / max * 100}%;background:${color}"></i><span>actual ${formatMinutesLabel(c.act)} (${diff > 0 ? "+" : ""}${diff}%)</span></div>
+      </div>
+    </div>`;
+  }).join("");
+  const worst = rows.filter(r => r.est >= 10).map(r => ({ ...r, diff: (r.act - r.est) / r.est })).sort((a, b) => Math.abs(b.diff) - Math.abs(a.diff)).slice(0, 3);
+  const worstHtml = worst.length ? `<div class="est-worst"><strong>Biggest surprises</strong>${worst.map(r => `<span>${escapeHtml(r.t.title)}: planned ${formatMinutesLabel(r.est)}, took ${formatMinutesLabel(r.act)}</span>`).join("")}</div>` : "";
+  body.innerHTML = catRows + worstHtml;
+}
+
+/* ---------- search everything (Ctrl/Cmd + K) ---------- */
+let paletteIndex = 0;
+let paletteItems = [];
+function openPalette() {
+  document.getElementById("palette-overlay").classList.add("open");
+  const input = document.getElementById("palette-input");
+  input.value = "";
+  renderPalette();
+  setTimeout(() => input.focus(), 30);
+}
+function closePalette() { document.getElementById("palette-overlay").classList.remove("open"); }
+function renderPalette() {
+  const q = document.getElementById("palette-input").value.trim().toLowerCase();
+  const out = [];
+  const fmtD = d => new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+  const today = todayStr();
+  if (!q) {
+    tasks.filter(t => !t.completed && !t.archived && t.dueDate).sort((a, b) => a.dueDate.localeCompare(b.dueDate)).slice(0, 8)
+      .forEach(t => out.push({ t, sub: `${t.category} · ${fmtD(t.dueDate)}`, kind: "task" }));
+  } else {
+    tasks.forEach(t => {
+      const hay = `${t.title} ${t.notes || ""} ${t.category || ""}`.toLowerCase();
+      const matchTask = hay.includes(q);
+      if (matchTask) out.push({ t, kind: "task", sub: `${t.category}${t.dueDate ? " · " + fmtD(t.dueDate) : ""}${t.completed ? " · done" : ""}${t.archived ? " · archived" : ""}`, score: (t.title.toLowerCase().includes(q) ? 0 : 2) + (t.completed ? 1 : 0) });
+      (t.subtasks || []).forEach(x => {
+        if (String(x.text).toLowerCase().includes(q)) out.push({ t, kind: "step", label: x.text, sub: `Step of ${t.title}${x.day ? " · " + fmtD(x.day) : ""}`, score: 1.5 });
+      });
+    });
+    out.sort((a, b) => (a.score || 0) - (b.score || 0));
+  }
+  paletteItems = out.slice(0, 40);
+  paletteIndex = 0;
+  const box = document.getElementById("palette-results");
+  if (!paletteItems.length) { box.innerHTML = `<div class="palette-empty">${q ? "No matches" : "Nothing coming up"}</div>`; return; }
+  box.innerHTML = paletteItems.map((it, i) => `
+    <div class="palette-item${i === 0 ? " active" : ""}" data-i="${i}">
+      <span class="palette-kind">${it.kind}</span>
+      <span class="palette-main"><b>${escapeHtml(it.label || it.t.title)}</b><small>${escapeHtml(it.sub)}</small></span>
+      <i class="week-cat-dot" style="background:${getCategoryColor(it.t.category)}"></i>
+    </div>`).join("");
+  box.querySelectorAll(".palette-item").forEach(el => {
+    el.addEventListener("click", () => pickPalette(parseInt(el.dataset.i, 10)));
+    el.addEventListener("mousemove", () => setPaletteIndex(parseInt(el.dataset.i, 10)));
+  });
+}
+function setPaletteIndex(i) {
+  paletteIndex = Math.max(0, Math.min(paletteItems.length - 1, i));
+  document.querySelectorAll(".palette-item").forEach((el, j) => el.classList.toggle("active", j === paletteIndex));
+  const act = document.querySelector(".palette-item.active");
+  if (act) act.scrollIntoView({ block: "nearest" });
+}
+function pickPalette(i) {
+  const it = paletteItems[i];
+  if (!it) return;
+  closePalette();
+  openModal(it.t.id);
+}
+document.getElementById("palette-input").addEventListener("input", renderPalette);
+document.getElementById("palette-input").addEventListener("keydown", (e) => {
+  if (e.key === "ArrowDown") { e.preventDefault(); setPaletteIndex(paletteIndex + 1); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); setPaletteIndex(paletteIndex - 1); }
+  else if (e.key === "Enter") { e.preventDefault(); pickPalette(paletteIndex); }
+});
+document.getElementById("palette-overlay").addEventListener("click", (e) => { if (e.target.id === "palette-overlay") closePalette(); });
+document.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && !e.altKey && e.key.toLowerCase() === "k") {
+    e.preventDefault();
+    if (document.getElementById("palette-overlay").classList.contains("open")) closePalette(); else openPalette();
+  }
+});
+
+/* ---------- focus mode ---------- */
+let focusInterval = null;
+function focusTask() {
+  const today = todayStr();
+  if (timerTaskId) { const t = tasks.find(x => x.id === timerTaskId && !x.completed); if (t) return t; }
+  const open = tasks.filter(t => isWorkableToday(t, today));
+  const byId = new Map(open.map(t => [t.id, t]));
+  return priorityQueueOrder.map(id => byId.get(id)).find(Boolean) || open[0] || null;
+}
+function openFocus() {
+  document.getElementById("focus-overlay").classList.add("open");
+  renderFocus();
+  clearInterval(focusInterval);
+  focusInterval = setInterval(() => {
+    const el = document.getElementById("focus-time");
+    if (el) el.textContent = focusTimeText();
+  }, 1000);
+}
+function closeFocus() {
+  document.getElementById("focus-overlay").classList.remove("open");
+  clearInterval(focusInterval);
+}
+function focusTimeText() {
+  const t = focusTask();
+  if (!t) return "00:00";
+  if (timerTaskId === t.id) return formatTimer(timerSeconds);
+  return formatTimer(timerBankedSeconds[t.id] || 0);
+}
+function renderFocus() {
+  const inner = document.getElementById("focus-inner");
+  if (!document.getElementById("focus-overlay").classList.contains("open")) return;
+  const t = focusTask();
+  const today = todayStr();
+  if (!t) {
+    const doneToday = tasks.filter(x => x.completed && x.completedOn === today).length;
+    inner.innerHTML = `<p class="focus-eyebrow">All clear</p><h1 class="focus-title">Nothing left for today</h1><p class="focus-sub">${doneToday ? `You finished ${doneToday} task${doneToday === 1 ? "" : "s"} today.` : "Add a task or enjoy the free time."}</p>`;
+    return;
+  }
+  const left = tasks.filter(x => isWorkableToday(x, today)).length;
+  const subs = t.subtasks || [];
+  const running = timerRunning && timerTaskId === t.id;
+  const cc = getCategoryColor(t.category);
+  inner.innerHTML = `
+    <p class="focus-eyebrow">${running ? "In progress" : "Up next"} &middot; ${left} to go today</p>
+    <h1 class="focus-title">${escapeHtml(t.title)}</h1>
+    <div class="focus-meta">
+      <span class="focus-chip" style="background:${cc}55;border-color:${cc}">${escapeHtml(t.category || "")}</span>
+      ${t.estimate ? `<span class="focus-chip">${formatMinutesLabel(Number(t.estimate))} planned</span>` : ""}
+      ${t.dueDate ? `<span class="focus-chip">${dueLabelInfo(t).text}</span>` : ""}
+    </div>
+    <div class="focus-time" id="focus-time">${focusTimeText()}</div>
+    <div class="focus-actions">
+      <button type="button" class="btn-primary" id="focus-toggle">${running ? "Pause" : "Start timer"}</button>
+      <button type="button" class="btn-secondary" id="focus-done">Mark done</button>
+      <button type="button" class="btn-ghost" id="focus-skip">Skip for now</button>
+    </div>
+    ${subs.length ? `<div class="focus-steps">${subs.map((x, i) => `<div class="focus-step${x.done ? " is-done" : ""}${x.day === today ? " is-today" : ""}" data-i="${i}"><span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span>${escapeHtml(x.text)}</span>${x.day ? `<small>${new Date(x.day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })}</small>` : ""}</div>`).join("")}</div>` : ""}
+    ${t.notes ? `<p class="focus-notes">${escapeHtml(t.notes)}</p>` : ""}`;
+  document.getElementById("focus-toggle").addEventListener("click", () => {
+    document.querySelector('.timer-mode-btn[data-timer-mode="task"]').click();
+    const sel = document.getElementById("pomodoro-task-select");
+    if (timerTaskId !== t.id) {
+      if (!Array.from(sel.options).some(o => o.value === t.id)) return;
+      sel.value = t.id; sel.dispatchEvent(new Event("change"));
+    }
+    document.getElementById("timer-toggle").click();
+    renderFocus();
+  });
+  document.getElementById("focus-done").addEventListener("click", () => {
+    let guard = 0;
+    while (!t.completed && guard++ < 3) cycleTaskStatus(t.id);
+  });
+  document.getElementById("focus-skip").addEventListener("click", () => {
+    priorityQueueOrder = priorityQueueOrder.filter(id => id !== t.id).concat(t.id);
+    savePriorityQueue();
+    if (timerTaskId === t.id && timerRunning) document.getElementById("timer-toggle").click();
+    renderPriorityQueue(); populateTimerTaskSelect();
+    renderFocus();
+  });
+  inner.querySelectorAll(".focus-step").forEach(el => el.addEventListener("click", () => {
+    const step = t.subtasks[parseInt(el.dataset.i, 10)];
+    if (!step) return;
+    step.done = !step.done;
+    saveTasks(); renderAll();
+  }));
+}
+document.getElementById("open-focus").addEventListener("click", openFocus);
+document.getElementById("focus-close").addEventListener("click", closeFocus);
+
+/* ---------- cat moods ---------- */
+let catBubbleTimer = null;
+function catSay(text, ms = 2800) {
+  const b = document.getElementById("cat-bubble");
+  if (!b) return;
+  b.textContent = text;
+  b.classList.add("show");
+  clearTimeout(catBubbleTimer);
+  catBubbleTimer = setTimeout(() => b.classList.remove("show"), ms);
+}
+const CHEERS = ["Nice work!", "One down!", "Purr-fect!", "You did it!", "Meow-velous!", "Keep going!"];
+function catCheer(t) {
+  triggerCatCelebrate();
+  triggerCatReaction();
+  const today = todayStr();
+  const dueToday = tasks.filter(x => x.dueDate === today);
+  const allDone = dueToday.length > 0 && dueToday.every(x => x.completed);
+  const streak = typeof computeDayStreak === "function" ? computeDayStreak() : 0;
+  if (allDone && [3, 7, 14, 30, 60, 100].includes(streak)) catSay(`${streak}-day streak! Amazing!`, 4200);
+  else if (allDone) catSay("All done for today!", 3600);
+  else catSay(CHEERS[Math.floor(Math.random() * CHEERS.length)]);
+}
+let lastActivity = Date.now();
+let catAsleep = false;
+function noteActivity() {
+  lastActivity = Date.now();
+  if (catAsleep) { catAsleep = false; updateCatMood(true); }
+}
+["pointerdown", "keydown", "touchstart"].forEach(ev => document.addEventListener(ev, noteActivity, { passive: true }));
+let moveThrottle = 0;
+document.addEventListener("mousemove", () => { const n = Date.now(); if (n - moveThrottle > 2000) { moveThrottle = n; noteActivity(); } }, { passive: true });
+function updateCatMood(justWoke) {
+  const cat = document.getElementById("pixel-cat");
+  if (!cat) return;
+  const idle = Date.now() - lastActivity;
+  const night = computeTimeTheme() === "night";
+  const working = timerRunning || (freeTimer && freeTimer.startedAt);
+  const sleepy = !working && (idle > 8 * 60 * 1000 || (night && idle > 2 * 60 * 1000));
+  catAsleep = sleepy;
+  cat.classList.toggle("sleepy", sleepy);
+  if (justWoke) catSay("mrrp?", 1800);
+}
+setInterval(updateCatMood, 15 * 1000);
+
+function renderUpgrade3() {
+  renderWeekGoals();
+  renderHeatmap();
+  renderEstimates();
+  refreshArchiveUi();
+  renderPrefsUi();
+  renderFocus();
+}
+
 function renderAll() {
   renderGreeting();
   renderCalendar();
@@ -3384,6 +4118,7 @@ function renderAll() {
   renderAchievements();
   renderSummary();
   renderNextAchievement();
+  renderUpgrade3();
 }
 
 migrateFreeSessions();
