@@ -826,7 +826,8 @@ function renderTaskItem(t, showCategory) {
   const pMeta = PRIORITY_META[t.priority] || PRIORITY_META.medium;
   const status = getTaskStatus(t);
   const item = document.createElement("div");
-  item.className = "task-item" + (t.completed ? " completed" : "") + ` status-${status}`;
+  const partDone = !t.completed && isBigTask(t) && t.dueDate > todayStr() && t.dayDone && t.dayDone[todayStr()];
+  item.className = "task-item" + (t.completed ? " completed" : "") + (partDone ? " part-done" : "") + ` status-${status}`;
   item.style.borderLeftColor = pMeta.color;
 
   const metaParts = [];
@@ -869,7 +870,7 @@ function renderTaskItem(t, showCategory) {
   }
 
   item.innerHTML = `
-    <div class="task-checkbox status-${status}" title="${STATUS_META[status].label} — click to change">${STATUS_META[status].icon}</div>
+    <div class="task-checkbox status-${status}${partDone ? " part-done-box" : ""}" title="${partDone ? "Today's part is done — click to undo" : isBigTask(t) && !t.completed && t.dueDate > todayStr() ? "Mark today's part done" : STATUS_META[status].label + " — click to change"}">${partDone ? "✓" : STATUS_META[status].icon}</div>
     <div class="task-body">
       <div class="task-title-row">
         <span class="task-title">${escapeHtml(t.title)}</span>
@@ -953,9 +954,22 @@ const STATUS_META = {
   "completed": { label: "Completed", icon: "✓" },
 };
 
+function isBigTask(t) { return !!(t.startDate && t.dueDate && t.startDate < t.dueDate); }
+function toggleDayDone(t, day) {
+  t.dayDone = t.dayDone || {};
+  if (t.dayDone[day]) delete t.dayDone[day]; else t.dayDone[day] = true;
+  if (!Object.keys(t.dayDone).length) delete t.dayDone;
+  saveTasks();
+  renderAll();
+  if (t.dayDone && t.dayDone[day]) {
+    showSimpleToast("Today's part done", `“${t.title}” stays open until its due date. Set Status to Completed in the task when it's all finished.`);
+    if (typeof catCheer === "function") catCheer(t);
+  }
+}
 function cycleTaskStatus(id) {
   const t = tasks.find(x => x.id === id);
   if (!t) return;
+  if (isBigTask(t) && !t.completed && t.dueDate > todayStr()) { toggleDayDone(t, todayStr()); return; }
   const cur = getTaskStatus(t);
   const next = STATUS_ORDER[(STATUS_ORDER.indexOf(cur) + 1) % STATUS_ORDER.length];
   t.status = next;
@@ -3275,6 +3289,37 @@ function dateShift(dateStr, n) {
   return formatDate(d);
 }
 
+function autoPlanTask(t) {
+  const snap = snapshotState();
+  const open = (t.subtasks || []).filter(x => !x.done);
+  if (!open.length) return;
+  const today = todayStr();
+  const doneMin = (t.subtasks || []).filter(x => x.done).reduce((a, x) => a + (Number(x.minutes) || 0), 0);
+  const have = open.reduce((a, x) => a + (Number(x.minutes) || 0), 0);
+  const total = Number(t.estimate) || have;
+  // 1. minutes per step (keep ones already set, split what's left evenly across the rest)
+  const blank = open.filter(x => !(Number(x.minutes) > 0));
+  if (blank.length) {
+    const left = Math.max(5 * blank.length, total - doneMin - have);
+    const each = Math.max(5, Math.floor(left / blank.length / 5) * 5);
+    blank.forEach((x, i) => { x.minutes = i === blank.length - 1 ? Math.max(5, left - each * (blank.length - 1)) : each; });
+  }
+  // 2. days: spread steps without a day across the remaining window
+  const from = t.startDate > today ? t.startDate : today;
+  const days = [];
+  for (let d = from < t.dueDate ? from : t.startDate, n = 0; d <= t.dueDate && n < 60; d = dateShift(d, 1), n++) days.push(d);
+  const free = open.filter(x => !x.day);
+  free.forEach((x, i) => { x.day = days[Math.min(days.length - 1, Math.floor(i * days.length / free.length))]; });
+  // 3. per-day minutes follow the steps, total follows the steps
+  const dm = {};
+  (t.subtasks || []).forEach(x => { if (x.day && Number(x.minutes) > 0) dm[x.day] = (dm[x.day] || 0) + Number(x.minutes); });
+  if (Object.keys(dm).length) t.dayMinutes = dm;
+  t.estimate = (t.subtasks || []).reduce((a, x) => a + (Number(x.minutes) || 0), 0) || t.estimate;
+  saveTasks();
+  renderAll();
+  showUndoToast(`Planned “${t.title}”: ${open.length} steps across ${days.length} days`, snap);
+}
+
 function renderWeek() {
   const panel = document.getElementById("week");
   if (!panel) return;
@@ -3317,9 +3362,14 @@ function renderWeek() {
     bar.style.borderColor = color;
     bar.style.background = `linear-gradient(90deg, ${color}33, ${color}1a)`;
     bar.title = `${t.title}: start ${t.startDate}, due ${t.dueDate}`;
+    const sumSteps = subs.reduce((a, x) => a + (Number(x.minutes) || 0), 0);
+    const total = Number(t.estimate) || sumSteps;
+    const needsPlan = !t.completed && subs.some(x => !x.done && (!x.day || !x.minutes)) && total > 0;
     bar.innerHTML = `
       <span class="week-bar-title">${escapeHtml(t.title)}</span>
-      <span class="week-bar-meta">${subs.length ? `&#9745; ${subsDone}/${subs.length} · ` : ""}due ${fmt(t.dueDate, { weekday: "short" })}${t.estimate ? " · " + formatMinutesLabel(Number(t.estimate)) : ""}${t.dayMinutes && t.dayMinutes[today] > 0 ? " · " + formatMinutesLabel(t.dayMinutes[today]) + " today" : ""}</span>`;
+      <span class="week-bar-meta">${subs.length ? `&#9745; ${subsDone}/${subs.length} · ` : ""}due ${fmt(t.dueDate, { weekday: "short" })}${total ? " · <b>total " + formatMinutesLabel(total) + "</b>" : ""}${t.dayMinutes && t.dayMinutes[today] > 0 ? " · " + formatMinutesLabel(t.dayMinutes[today]) + " today" : ""}${needsPlan ? ` · <span class="week-autoplan" role="button" title="Split the total across the steps and spread the steps over the days">Auto-plan steps</span>` : ""}</span>`;
+    const ap = bar.querySelector(".week-autoplan");
+    if (ap) ap.addEventListener("click", (e) => { e.stopPropagation(); autoPlanTask(t); });
     bar.addEventListener("click", () => openModal(t.id));
     bars.appendChild(bar);
   });
@@ -3365,7 +3415,10 @@ function renderWeek() {
       chip.className = "week-working";
       chip.title = "Working window — click to edit";
       const am = t.dayMinutes && t.dayMinutes[d] > 0 ? t.dayMinutes[d] : 0;
-      chip.innerHTML = `&#9654; ${escapeHtml(t.title)}${am ? ` <b>${formatMinutesLabel(am)}</b>` : ""}`;
+      const dd = !!(t.dayDone && t.dayDone[d]);
+      if (dd) chip.classList.add("day-done");
+      chip.innerHTML = `<span class="week-chip-box${dd ? " on" : ""}" title="Mark this day's part done">${dd ? "&#10003;" : ""}</span> ${escapeHtml(t.title)}${am ? ` <b>${formatMinutesLabel(am)}</b>` : ""}`;
+      chip.querySelector(".week-chip-box").addEventListener("click", (e) => { e.stopPropagation(); toggleDayDone(t, d); });
       chip.addEventListener("click", () => openModal(t.id));
       list.appendChild(chip);
     });

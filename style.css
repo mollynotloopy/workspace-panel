@@ -1851,3 +1851,13 @@ a.template-save-btn { text-decoration: none; margin-left: 12px; }
 .estimate-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: -6px 0 14px; font-size: 12px; color: var(--text-sub); }
 .estimate-tools .estimate-hint { flex: 1; min-width: 150px; }
 .estimate-tools .btn-secondary { padding: 5px 10px; font-size: 12px; }
+
+/* big task: today's part done */
+.task-item.part-done { opacity: .62; }
+.task-item.part-done .task-title { text-decoration: line-through; text-decoration-style: dotted; }
+.task-checkbox.part-done-box { background: var(--accent); border-color: var(--accent); color: #fff; font-size: 12px; }
+.week-chip-box { display: inline-block; width: 12px; height: 12px; border: 2px solid currentColor; vertical-align: -2px; text-align: center; font-size: 9px; line-height: 9px; margin-right: 2px; }
+.week-chip-box.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.week-working.day-done { opacity: .55; text-decoration: line-through; }
+.week-bar-meta b { font-weight: 700; }
+.week-autoplan { text-decoration: underline; cursor: pointer; font-weight: 700; }
