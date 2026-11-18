@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=18" />
+<link rel="stylesheet" href="style.css?v=19" />
 </head>
 <body>
 
@@ -437,6 +437,15 @@
         </div>
         <p class="start-hint" id="start-hint">For big tasks: it will show up on your Week view and daily lists from this day until it's due.</p>
       </div>
+      <div class="field day-plan-field" id="day-plan-field" style="display:none;">
+        <span>Time per day (optional)</span>
+        <div class="day-plan-list" id="day-plan-list"></div>
+        <div class="day-plan-foot">
+          <span id="day-plan-total"></span>
+          <button type="button" class="btn-secondary" id="day-plan-split" title="Divide the estimate evenly across the days">Split estimate evenly</button>
+          <button type="button" class="date-quick-btn" id="day-plan-clear">Clear</button>
+        </div>
+      </div>
       <div class="date-quick" id="date-quick">
         <button type="button" data-qd="0">Today</button>
         <button type="button" data-qd="1">Tomorrow</button>
@@ -701,6 +710,6 @@
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=19"></script>
+<script src="app.js?v=21"></script>
 </body>
 </html>

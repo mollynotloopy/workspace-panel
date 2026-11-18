@@ -1831,3 +1831,16 @@ a.template-save-btn { text-decoration: none; margin-left: 12px; }
 .week-task-sub { flex-wrap: wrap; row-gap: 1px; }
 .week-cat-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
 .week-task-sub b { white-space: nowrap; }
+
+/* ===== time per day ===== */
+.day-plan-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 6px; margin: 6px 0 8px; }
+.day-plan-row { display: flex; align-items: center; gap: 6px; padding: 4px 8px; border: 2px solid var(--outline); background: var(--bg-input); font-size: 12px; }
+.day-plan-row span { flex: 1; white-space: nowrap; }
+.day-plan-row input { width: 58px; padding: 4px 5px !important; font-size: 12px !important; text-align: right; }
+.day-plan-row em { font-style: normal; color: var(--text-sub); font-size: 11px; }
+.day-plan-foot { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 12px; color: var(--text-sub); }
+.day-plan-foot #day-plan-total { flex: 1; min-width: 140px; }
+.day-plan-foot #day-plan-total.over { color: #b04040; }
+.day-plan-foot #day-plan-total.short { color: #a07a20; }
+.day-plan-foot .btn-secondary { padding: 5px 10px; font-size: 12px; }
+.week-working b { margin-left: 4px; font-weight: 700; opacity: .8; }

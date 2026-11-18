@@ -447,8 +447,8 @@ function renderStats() {
   const highPriority = incomplete.filter(t => t.priority === "high" && t.dueDate === today).length;
 
   const todaysMinutes = incomplete
-    .filter(t => t.dueDate === today || (t.dueDate && t.dueDate < today))
-    .reduce((sum, t) => sum + (Number(t.estimate) || 0), 0);
+    .filter(t => t.dueDate === today || (t.dueDate && t.dueDate < today) || (t.dayMinutes && t.dayMinutes[today] > 0))
+    .reduce((sum, t) => sum + minutesOn(t, today), 0);
   const hrs = Math.floor(todaysMinutes / 60);
   const mins = todaysMinutes % 60;
   const timeLabel = todaysMinutes === 0 ? "0h" : (hrs > 0 ? `${hrs}h ${mins ? mins + "m" : ""}`.trim() : `${mins}m`);
@@ -519,7 +519,7 @@ function renderPriorityQueue() {
   if (document.activeElement !== budgetInput) budgetInput.value = budgetHours;
   const workedToday = sessions.filter(x => x.date === today).reduce((sum, x) => sum + (Number(x.minutes) || 0), 0);
   const remaining = Math.max(0, Math.round(budgetHours * 60) - workedToday);
-  const estOf = t => Number(t.estimate) || 30;
+  const estOf = t => t.dayMinutes ? minutesOn(t, today) : (Number(t.estimate) || 30);
   let cum = 0;
   let divider = null;
   const overflow = [];
@@ -1048,6 +1048,7 @@ function setEditScope(scope) {
   dueDateRow.style.display = series ? "none" : "grid";
   document.getElementById("subtasks-field").style.display = series ? "none" : "block";
   document.getElementById("start-field").style.display = series ? "none" : "block";
+  if (series) document.getElementById("day-plan-field").style.display = "none"; else renderDayPlan();
   document.querySelector(".template-save-row").style.display = series ? "none" : "block";
   document.getElementById("edit-scope-hint").textContent = series
     ? "Changes apply to every occurrence. Anything you edited on a single day is kept."
@@ -1091,6 +1092,7 @@ function openModal(taskId = null) {
   document.getElementById("subtasks-field").style.display = "block";
   document.getElementById("start-field").style.display = "block";
   document.getElementById("task-start-date").value = "";
+  modalDayMinutes = t && t.dayMinutes ? { ...t.dayMinutes } : {};
   document.querySelector(".template-save-row").style.display = "block";
   modalSubtasks = t && Array.isArray(t.subtasks) ? t.subtasks.map(x => ({ ...x })) : [];
   renderSubtaskEditor();
@@ -1130,6 +1132,7 @@ function openModal(taskId = null) {
   }
 
   renderSubtaskEditor();
+  renderDayPlan();
   overlay.classList.add("open");
 }
 
@@ -1324,6 +1327,7 @@ form.addEventListener("submit", (e) => {
       dueTime: document.getElementById("task-due-time").value,
       startDate: readStartDate(document.getElementById("task-due-date").value),
     };
+    data.dayMinutes = cleanDayMinutes(data.startDate, data.dueDate);
 
     if (id) {
       if (existingTask.recurringId) markOccurrenceOverrides(existingTask, data);
@@ -3297,7 +3301,7 @@ function renderWeek() {
     bar.title = `${t.title}: start ${t.startDate}, due ${t.dueDate}`;
     bar.innerHTML = `
       <span class="week-bar-title">${escapeHtml(t.title)}</span>
-      <span class="week-bar-meta">${subs.length ? `&#9745; ${subsDone}/${subs.length} · ` : ""}due ${fmt(t.dueDate, { weekday: "short" })}${t.estimate ? " · " + t.estimate + " min" : ""}</span>`;
+      <span class="week-bar-meta">${subs.length ? `&#9745; ${subsDone}/${subs.length} · ` : ""}due ${fmt(t.dueDate, { weekday: "short" })}${t.estimate ? " · " + formatMinutesLabel(Number(t.estimate)) : ""}${t.dayMinutes && t.dayMinutes[today] > 0 ? " · " + formatMinutesLabel(t.dayMinutes[today]) + " today" : ""}</span>`;
     bar.addEventListener("click", () => openModal(t.id));
     bars.appendChild(bar);
   });
@@ -3308,7 +3312,7 @@ function renderWeek() {
   days.forEach(d => {
     const due = tasks.filter(t => !t.archived && (t.dueDate === d || (t.completed && t.completedOn === d && t.dueDate !== d)));
     const open = due.filter(t => !t.completed);
-    const mins = open.reduce((sum, t) => sum + (Number(t.estimate) || 0), 0);
+    const mins = loadOn(d);
     const capMin = Math.round(weekCapacityHours() * 60);
     const over = d >= today && mins > capMin;
     const pct = capMin ? Math.min(100, Math.round(mins / capMin * 100)) : 0;
@@ -3318,7 +3322,7 @@ function renderWeek() {
     col.innerHTML = `
       <div class="week-day-head">
         <strong>${fmt(d, { weekday: "short" })} ${fmt(d, { day: "numeric" })}</strong>
-        <span>${open.length ? open.length + " task" + (open.length === 1 ? "" : "s") + (mins ? " · " + formatMinutesLabel(mins) : "") : "free"}</span>
+        <span>${open.length ? open.length + " task" + (open.length === 1 ? "" : "s") + (mins ? " · " + formatMinutesLabel(mins) : "") : mins ? formatMinutesLabel(mins) + " planned" : "free"}</span>
       </div>
       ${d >= today || mins ? `<div class="week-cap${over ? " over" : ""}" title="${formatMinutesLabel(mins)} planned of ${formatMinutesLabel(capMin)}"><i style="width:${pct}%"></i></div>` : ""}
       ${over ? `<button type="button" class="week-rebalance" title="Move the lowest-priority tasks to lighter days">Over by ${formatMinutesLabel(mins - capMin)} &middot; Rebalance</button>` : ""}
@@ -3342,7 +3346,8 @@ function renderWeek() {
       chip.type = "button";
       chip.className = "week-working";
       chip.title = "Working window — click to edit";
-      chip.innerHTML = `&#9654; ${escapeHtml(t.title)}`;
+      const am = t.dayMinutes && t.dayMinutes[d] > 0 ? t.dayMinutes[d] : 0;
+      chip.innerHTML = `&#9654; ${escapeHtml(t.title)}${am ? ` <b>${formatMinutesLabel(am)}</b>` : ""}`;
       chip.addEventListener("click", () => openModal(t.id));
       list.appendChild(chip);
     });
@@ -3379,7 +3384,7 @@ function renderWeek() {
       row.title = `${t.category || "No category"}${t.estimate ? " · " + t.estimate + " min" : ""}`;
       row.innerHTML = `
         <span class="task-checkbox status-${status}" title="${STATUS_META[status].label} — click to change">${STATUS_META[status].icon}</span>
-        <span class="week-task-title">${escapeHtml(t.title)}<small class="week-task-sub"><span class="week-cat-dot" style="background:${cc}"></span><span class="week-cat-name">${escapeHtml(t.category || "")}</span>${t.estimate ? `<b>${formatMinutesLabel(t.estimate)}</b>` : ""}</small></span>
+        <span class="week-task-title">${escapeHtml(t.title)}<small class="week-task-sub"><span class="week-cat-dot" style="background:${cc}"></span><span class="week-cat-name">${escapeHtml(t.category || "")}</span>${(t.dayMinutes && t.dayMinutes[d] > 0) ? `<b>${formatMinutesLabel(t.dayMinutes[d])} today</b>` : t.estimate ? `<b>${formatMinutesLabel(t.estimate)}</b>` : ""}</small></span>
         ${t.startDate && t.startDate < t.dueDate && t.dueDate === d ? `<span class="week-due-tag">due</span>` : ""}`;
       row.querySelector(".task-checkbox").addEventListener("click", (e) => { e.stopPropagation(); cycleTaskStatus(t.id); });
       row.addEventListener("click", () => openModal(t.id));
@@ -3448,9 +3453,9 @@ function rebalanceDay(d, days) {
   const today = todayStr();
   const cap = Math.round(weekCapacityHours() * 60);
   const est = t => Number(t.estimate) || 0;
-  const open = day => tasks.filter(t => !t.completed && !t.archived && t.dueDate === day);
+  const open = day => tasks.filter(t => !t.completed && !t.archived && t.dueDate === day && !t.dayMinutes);
   const load = {};
-  days.forEach(x => { load[x] = open(x).reduce((s, t) => s + est(t), 0); });
+  days.forEach(x => { load[x] = loadOn(x); });
   const rank = { low: 1, medium: 2, "time-sensitive": 3, high: 3 };
   const candidates = open(d).filter(t => est(t) > 0 && t.priority !== "time-sensitive" && !t.dueTime)
     .sort((a, b) => (rank[a.priority] || 2) - (rank[b.priority] || 2) || est(b) - est(a));
@@ -4008,6 +4013,7 @@ function renderFocus() {
     <div class="focus-meta">
       <span class="focus-chip" style="background:${cc}55;border-color:${cc}">${escapeHtml(t.category || "")}</span>
       ${t.estimate ? `<span class="focus-chip">${formatMinutesLabel(Number(t.estimate))} planned</span>` : ""}
+      ${t.dayMinutes && t.dayMinutes[today] > 0 ? `<span class="focus-chip">${formatMinutesLabel(t.dayMinutes[today])} planned for today</span>` : ""}
       ${t.dueDate ? `<span class="focus-chip">${dueLabelInfo(t).text}</span>` : ""}
     </div>
     <div class="focus-time" id="focus-time">${focusTimeText()}</div>
@@ -4101,6 +4107,102 @@ function renderUpgrade3() {
   renderPrefsUi();
   renderFocus();
 }
+
+/* ---------- time per day for big tasks ---------- */
+let modalDayMinutes = {};
+
+// minutes a task asks for on a given day
+function minutesOn(t, day) {
+  const dm = t.dayMinutes;
+  if (!dm) return Number(t.estimate) || 0;
+  if (dm[day] != null) return Number(dm[day]) || 0;
+  const outside = (t.dueDate && day > t.dueDate) || (t.startDate && day < t.startDate);
+  return outside ? (Number(t.estimate) || 0) : 0;
+}
+// planned load on a calendar day across all open tasks
+function loadOn(day) {
+  return tasks.reduce((sum, t) => {
+    if (t.completed || t.archived) return sum;
+    if (t.dayMinutes) return sum + (Number(t.dayMinutes[day]) || 0);
+    return t.dueDate === day ? sum + (Number(t.estimate) || 0) : sum;
+  }, 0);
+}
+function cleanDayMinutes(start, due) {
+  if (!start || !due || start >= due) return undefined;
+  const out = {};
+  Object.entries(modalDayMinutes).forEach(([d, m]) => {
+    const n = Math.round(Number(m));
+    if (n > 0 && d >= start && d <= due) out[d] = n;
+  });
+  return Object.keys(out).length ? out : undefined;
+}
+function dayPlanDays() {
+  const start = document.getElementById("task-start-date").value;
+  const due = document.getElementById("task-due-date").value;
+  if (!start || !due || start >= due) return [];
+  const days = [];
+  for (let d = start, n = 0; d <= due && n < 45; d = dateShift(d, 1), n++) days.push(d);
+  return days;
+}
+function renderDayPlan() {
+  const field = document.getElementById("day-plan-field");
+  if (!field) return;
+  const days = dayPlanDays();
+  field.style.display = days.length && editScope !== "series" ? "block" : "none";
+  if (!days.length) return;
+  const list = document.getElementById("day-plan-list");
+  list.innerHTML = "";
+  days.forEach(d => {
+    const row = document.createElement("label");
+    row.className = "day-plan-row";
+    const label = new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
+    row.innerHTML = `<span>${label}</span><input type="number" min="0" max="960" step="15" placeholder="0" value="${modalDayMinutes[d] || ""}" /><em>min</em>`;
+    row.querySelector("input").addEventListener("input", (e) => {
+      const v = parseInt(e.target.value, 10);
+      if (v > 0) modalDayMinutes[d] = v; else delete modalDayMinutes[d];
+      updateDayPlanTotal();
+    });
+    list.appendChild(row);
+  });
+  updateDayPlanTotal();
+}
+function updateDayPlanTotal() {
+  const days = dayPlanDays();
+  const total = days.reduce((s, d) => s + (Number(modalDayMinutes[d]) || 0), 0);
+  const est = Number(document.getElementById("task-estimate").value) || 0;
+  const el = document.getElementById("day-plan-total");
+  el.classList.remove("over", "short");
+  if (!total) { el.textContent = est ? `Estimate: ${formatMinutesLabel(est)}` : "Enter minutes for each day"; return; }
+  if (est && total !== est) {
+    el.classList.add(total > est ? "over" : "short");
+    el.textContent = `Planned ${formatMinutesLabel(total)} · ${total > est ? "over" : "under"} the ${formatMinutesLabel(est)} estimate by ${formatMinutesLabel(Math.abs(total - est))}`;
+  } else {
+    el.textContent = `Planned ${formatMinutesLabel(total)}${est ? " · matches your estimate" : ""}`;
+  }
+}
+["task-start-date", "task-due-date", "task-estimate"].forEach(id => {
+  document.getElementById(id).addEventListener("change", renderDayPlan);
+});
+document.getElementById("start-clear").addEventListener("click", renderDayPlan);
+document.getElementById("day-plan-clear").addEventListener("click", () => { modalDayMinutes = {}; renderDayPlan(); });
+document.getElementById("day-plan-split").addEventListener("click", () => {
+  let days = dayPlanDays();
+  const est = Number(document.getElementById("task-estimate").value) || 0;
+  if (!est) { showSimpleToast("Add an estimate first", "Set the estimated minutes for the whole task, then split it across the days."); return; }
+  if (document.getElementById("spread-skip-weekends").checked) {
+    const wk = days.filter(d => { const g = new Date(d + "T12:00:00").getDay(); return g !== 0 && g !== 6; });
+    if (wk.length) days = wk;
+  }
+  modalDayMinutes = {};
+  const base = Math.floor(est / days.length / 5) * 5;
+  let used = 0;
+  days.forEach((d, i) => {
+    const m = i === days.length - 1 ? est - used : base;
+    if (m > 0) modalDayMinutes[d] = m;
+    used += base;
+  });
+  renderDayPlan();
+});
 
 function renderAll() {
   renderGreeting();
