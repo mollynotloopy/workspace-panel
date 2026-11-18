@@ -848,6 +848,11 @@ function renderTaskItem(t, showCategory) {
   const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
   const subsDone = subs.filter(x => x.done).length;
   const subsOpen = expandedTasks.has(t.id);
+  const bst = (!t.completed && subs.length) ? bigStatsFor(subs) : null;
+  if (bst && (isBigTask(t) || subs.some(x => x.day))) {
+    metaParts.push(`<span class="recurring-badge big-state ${bst.state}" title="Progress of the checklist">${bst.pct}% · ${bigStateLabel(bst)}</span>`);
+    if (bst.state === "behind") metaParts.push(`<button type="button" class="catchup-chip" title="Move missed steps onto the lightest upcoming days">Catch up</button>`);
+  }
   if (subs.length) {
     metaParts.push(`<button type="button" class="sub-chip${subsDone === subs.length ? " all-done" : ""}" title="Show checklist">&#9745; ${subsDone}/${subs.length}</button>`);
   }
@@ -889,6 +894,8 @@ function renderTaskItem(t, showCategory) {
     cycleTaskStatus(t.id);
   });
 
+  const cuChip = item.querySelector(".catchup-chip");
+  if (cuChip) cuChip.addEventListener("click", (e) => { e.stopPropagation(); catchUpTask(t); });
   const subChip = item.querySelector(".sub-chip");
   if (subChip) {
     subChip.addEventListener("click", (e) => {
@@ -1153,6 +1160,7 @@ function openModal(taskId = null) {
   renderSubtaskEditor();
   renderDayPlan();
   updateEstimateTools();
+  document.getElementById("respread-note").style.display = "none";
   overlay.classList.add("open");
 }
 
@@ -2927,6 +2935,7 @@ function stepDayOptions(current) {
   return out.sort();
 }
 
+let stepDragFrom = null;
 function renderSubtaskEditor() {
   const box = document.getElementById("subtask-editor");
   box.innerHTML = "";
@@ -2934,12 +2943,29 @@ function renderSubtaskEditor() {
     const row = document.createElement("div");
     row.className = "subtask-row";
     row.innerHTML = `
+      <span class="sub-grip" draggable="true" title="Drag to reorder">&#8942;&#8942;</span>
       <span class="sub-box${step.done ? " done" : ""}" title="Mark step done">&#10003;</span>
       <input type="text" value="${escapeAttr(step.text)}" maxlength="120" />
       <input type="number" class="sub-min" min="0" max="960" step="5" placeholder="min" title="Minutes for this step" value="${step.minutes || ""}" />
       <select class="sub-day" title="Day to work on this step"></select>
       <button type="button" class="sub-del" title="Remove step">&times;</button>
     `;
+    const grip = row.querySelector(".sub-grip");
+    grip.addEventListener("dragstart", (e) => {
+      stepDragFrom = i; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move";
+      try { e.dataTransfer.setData("text/plain", "step"); e.dataTransfer.setDragImage(row, 12, 12); } catch (_) {}
+    });
+    grip.addEventListener("dragend", () => { stepDragFrom = null; box.querySelectorAll(".dragging,.drag-over").forEach(r => r.classList.remove("dragging", "drag-over")); });
+    row.addEventListener("dragover", (e) => { if (stepDragFrom != null) { e.preventDefault(); row.classList.add("drag-over"); } });
+    row.addEventListener("dragleave", () => row.classList.remove("drag-over"));
+    row.addEventListener("drop", (e) => {
+      e.preventDefault();
+      const from = stepDragFrom; stepDragFrom = null;
+      if (from == null || from === i) { renderSubtaskEditor(); return; }
+      const [m] = modalSubtasks.splice(from, 1);
+      modalSubtasks.splice(i, 0, m);
+      renderSubtaskEditor();
+    });
     const daySel = row.querySelector(".sub-day");
     const fillDays = () => {
       daySel.innerHTML = `<option value="">Any day</option>` + stepDayOptions(step.day).map(d =>
@@ -2972,12 +2998,13 @@ function renderSubtaskEditor() {
     });
     box.appendChild(row);
   });
+  updateBigProgress();
 }
 
 ["task-start-date", "task-due-date"].forEach(id => {
-  document.getElementById(id).addEventListener("change", () => { if (modalSubtasks.length) renderSubtaskEditor(); });
+  document.getElementById(id).addEventListener("change", () => { if (modalSubtasks.length) renderSubtaskEditor(); offerRespread(); });
 });
-document.getElementById("start-clear").addEventListener("click", () => { if (modalSubtasks.length) renderSubtaskEditor(); });
+document.getElementById("start-clear").addEventListener("click", () => { if (modalSubtasks.length) renderSubtaskEditor(); offerRespread(); });
 
 function addSubtaskFromInput() {
   const input = document.getElementById("subtask-new");
@@ -3323,6 +3350,8 @@ function autoPlanTask(t) {
 function renderWeek() {
   const panel = document.getElementById("week");
   if (!panel) return;
+  syncWeekControls();
+  if (weekView.mode === "month") { renderMonth(); return; }
   const range = getWeekRange(weekOffset);
   const startStr = formatDate(range.start);
   const days = Array.from({ length: 7 }, (_, i) => dateShift(startStr, i));
@@ -3343,7 +3372,8 @@ function renderWeek() {
   ).join("");
 
   // multi-day bars
-  const span = tasks.filter(t => !t.archived && t.startDate && t.dueDate && t.startDate < t.dueDate && t.startDate <= endStr && t.dueDate >= startStr);
+  renderWeekSummary(days, today);
+  const span = tasks.filter(t => weekVisible(t) && t.startDate && t.dueDate && t.startDate < t.dueDate && t.startDate <= endStr && t.dueDate >= startStr);
   span.sort((a, b) => a.startDate.localeCompare(b.startDate) || a.dueDate.localeCompare(b.dueDate));
   const bars = document.getElementById("week-bars");
   bars.innerHTML = "";
@@ -3354,6 +3384,7 @@ function renderWeek() {
     const color = getCategoryColor(t.category);
     const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
     const subsDone = subs.filter(x => x.done).length;
+    const bst = !t.completed && subs.length ? bigStatsFor(subs) : null;
     const bar = document.createElement("button");
     bar.type = "button";
     bar.className = "week-bar" + (t.completed ? " is-done" : "") +
@@ -3367,7 +3398,9 @@ function renderWeek() {
     const needsPlan = !t.completed && subs.some(x => !x.done && (!x.day || !x.minutes)) && total > 0;
     bar.innerHTML = `
       <span class="week-bar-title">${escapeHtml(t.title)}</span>
-      <span class="week-bar-meta">${subs.length ? `&#9745; ${subsDone}/${subs.length} · ` : ""}due ${fmt(t.dueDate, { weekday: "short" })}${total ? " · <b>total " + formatMinutesLabel(total) + "</b>" : ""}${t.dayMinutes && t.dayMinutes[today] > 0 ? " · " + formatMinutesLabel(t.dayMinutes[today]) + " today" : ""}${needsPlan ? ` · <span class="week-autoplan" role="button" title="Split the total across the steps and spread the steps over the days">Auto-plan steps</span>` : ""}</span>`;
+      <span class="week-bar-meta">${subs.length ? `&#9745; ${subsDone}/${subs.length} · ` : ""}due ${fmt(t.dueDate, { weekday: "short" })}${total ? " · <b>total " + formatMinutesLabel(total) + "</b>" : ""}${t.dayMinutes && t.dayMinutes[today] > 0 ? " · " + formatMinutesLabel(t.dayMinutes[today]) + " today" : ""}${bst ? ` · ${bst.pct}% · <span class="week-state ${bst.state}">${bigStateLabel(bst)}</span>` : ""}${bst && bst.state === "behind" ? ` · <span class="week-catchup" role="button" title="Move missed steps onto the lightest upcoming days">Catch up</span>` : ""}${needsPlan ? ` · <span class="week-autoplan" role="button" title="Split the total across the steps and spread the steps over the days">Auto-plan steps</span>` : ""}</span>${bst ? `<i class="week-bar-prog" style="width:${bst.pct}%"></i>` : ""}`;
+    const cu = bar.querySelector(".week-catchup");
+    if (cu) cu.addEventListener("click", (e) => { e.stopPropagation(); catchUpTask(t); });
     const ap = bar.querySelector(".week-autoplan");
     if (ap) ap.addEventListener("click", (e) => { e.stopPropagation(); autoPlanTask(t); });
     bar.addEventListener("click", () => openModal(t.id));
@@ -3378,13 +3411,13 @@ function renderWeek() {
   const box = document.getElementById("week-days");
   box.innerHTML = "";
   days.forEach(d => {
-    const due = tasks.filter(t => !t.archived && (t.dueDate === d || (t.completed && t.completedOn === d && t.dueDate !== d)));
+    const due = tasks.filter(t => weekVisible(t) && (t.dueDate === d || (t.completed && t.completedOn === d && t.dueDate !== d)));
     const open = due.filter(t => !t.completed);
     const mins = loadOn(d);
     const capMin = Math.round(weekCapacityHours() * 60);
     const over = d >= today && mins > capMin;
     const pct = capMin ? Math.min(100, Math.round(mins / capMin * 100)) : 0;
-    const working = tasks.filter(t => !t.completed && t.startDate && t.dueDate && t.startDate <= d && d < t.dueDate);
+    const working = tasks.filter(t => weekVisible(t) && !t.completed && t.startDate && t.dueDate && t.startDate <= d && d < t.dueDate);
     const col = document.createElement("div");
     col.className = "week-day" + (d === today ? " is-today" : "") + (d < today ? " is-past" : "");
     col.innerHTML = `
@@ -3398,11 +3431,12 @@ function renderWeek() {
       <button type="button" class="week-day-add" title="Add a task on this day">+ add</button>`;
     const rb = col.querySelector(".week-rebalance");
     if (rb) rb.addEventListener("click", () => rebalanceDay(d, days));
-    col.addEventListener("dragover", (e) => { if (weekDragId) { e.preventDefault(); col.classList.add("drop-target"); } });
+    col.addEventListener("dragover", (e) => { if (weekDragId || weekDragStep) { e.preventDefault(); col.classList.add("drop-target"); } });
     col.addEventListener("dragleave", (e) => { if (!col.contains(e.relatedTarget)) col.classList.remove("drop-target"); });
     col.addEventListener("drop", (e) => {
       e.preventDefault();
       col.classList.remove("drop-target");
+      if (weekDragStep) { const ds = weekDragStep; weekDragStep = null; moveStepToDay(ds.tid, ds.idx, d); return; }
       const id = weekDragId; weekDragId = null;
       const t = tasks.find(x => x.id === id);
       if (t && t.dueDate !== d) moveTaskToDate(t, d, `Moved “${t.title}” to ${fmt(d, { weekday: "long" })}`);
@@ -3423,11 +3457,16 @@ function renderWeek() {
       list.appendChild(chip);
     });
     const steps = [];
-    tasks.forEach(t => (t.subtasks || []).forEach((x, si) => { if (x.day === d && !t.completed && !t.archived) steps.push({ t, x, si }); }));
+    tasks.forEach(t => (t.subtasks || []).forEach((x, si) => { if (x.day === d && weekVisible(t) && !t.completed && !(weekView.hideDone && x.done)) steps.push({ t, x, si }); }));
     steps.sort((a, b) => (a.x.done - b.x.done));
-    steps.forEach(({ t, x }) => {
+    steps.forEach(({ t, x, si }) => {
       const row = document.createElement("div");
       row.className = "week-step" + (x.done ? " is-done" : "");
+      if (!x.done) {
+        row.draggable = true;
+        row.addEventListener("dragstart", (e) => { weekDragStep = { tid: t.id, idx: si }; weekDragId = null; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", x.text); } catch (_) {} });
+        row.addEventListener("dragend", () => { weekDragStep = null; row.classList.remove("dragging"); document.querySelectorAll(".week-day.drop-target").forEach(c => c.classList.remove("drop-target")); });
+      }
       row.innerHTML = `<span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="week-step-text">${escapeHtml(x.text)}<small>${escapeHtml(t.title)}${x.minutes ? " · " + formatMinutesLabel(x.minutes) : ""}</small></span>`;
       row.querySelector(".sub-box").addEventListener("click", (e) => {
         e.stopPropagation();
@@ -3471,9 +3510,9 @@ function renderWeek() {
   });
 }
 
-document.getElementById("week-prev").addEventListener("click", () => { weekOffset--; renderWeek(); });
-document.getElementById("week-next").addEventListener("click", () => { weekOffset++; renderWeek(); });
-document.getElementById("week-today").addEventListener("click", () => { weekOffset = 0; renderWeek(); });
+document.getElementById("week-prev").addEventListener("click", () => { if (weekView.mode === "month") monthOffset--; else weekOffset--; renderWeek(); });
+document.getElementById("week-next").addEventListener("click", () => { if (weekView.mode === "month") monthOffset++; else weekOffset++; renderWeek(); });
+document.getElementById("week-today").addEventListener("click", () => { weekOffset = 0; monthOffset = 0; renderWeek(); });
 document.getElementById("week-add-task").addEventListener("click", () => {
   openModal();
   const today = todayStr();
@@ -4339,6 +4378,228 @@ document.getElementById("day-plan-split").addEventListener("click", () => {
   });
   renderDayPlan();
 });
+
+/* ===================== Upgrade 4: big-task health + week views ===================== */
+const WEEKVIEW_KEY = "molly-panel-weekview-v1";
+let weekView = Object.assign({ mode: "week", compact: false, cat: "", hideDone: false, onlyBig: false }, loadJSON(WEEKVIEW_KEY, {}));
+let monthOffset = 0;
+let weekDragStep = null;
+function saveWeekView() { try { localStorage.setItem(WEEKVIEW_KEY, JSON.stringify(weekView)); } catch (_) {} }
+
+function weekVisible(t) {
+  if (t.archived) return false;
+  if (weekView.cat && t.category !== weekView.cat) return false;
+  if (weekView.hideDone && t.completed) return false;
+  if (weekView.onlyBig && !isBigTask(t)) return false;
+  return true;
+}
+
+/* ---------- progress / on track ---------- */
+function bigStatsFor(steps) {
+  if (!steps || !steps.length) return null;
+  const today = todayStr();
+  const hasMin = steps.some(x => Number(x.minutes) > 0);
+  const w = x => hasMin ? (Number(x.minutes) || 0) : 1;
+  const total = steps.reduce((a, x) => a + w(x), 0);
+  if (!total) return null;
+  const done = steps.filter(x => x.done).reduce((a, x) => a + w(x), 0);
+  const late = steps.filter(x => !x.done && x.day && x.day < today);
+  const lateW = late.reduce((a, x) => a + w(x), 0);
+  const ahead = steps.some(x => x.done && x.day && x.day > today);
+  return { pct: Math.round(done / total * 100), state: late.length ? "behind" : ahead ? "ahead" : "on", lateMin: hasMin ? lateW : 0, lateCount: late.length };
+}
+function bigStateLabel(st) {
+  if (st.state === "behind") return st.lateMin ? `behind by ${formatMinutesLabel(st.lateMin)}` : `${st.lateCount} step${st.lateCount === 1 ? "" : "s"} behind`;
+  return st.state === "ahead" ? "ahead" : "on track";
+}
+
+/* ---------- catch-up ---------- */
+function catchUpSteps(steps, endDate) {
+  const today = todayStr();
+  const late = steps.filter(x => !x.done && x.day && x.day < today);
+  if (!late.length) return 0;
+  const end = endDate && endDate >= today ? endDate : today;
+  const days = [];
+  for (let d = today, n = 0; d <= end && n < 60; d = dateShift(d, 1), n++) days.push(d);
+  const load = {}; days.forEach(d => { load[d] = 0; });
+  steps.forEach(x => { if (!x.done && x.day && load[x.day] != null) load[x.day] += Number(x.minutes) || 30; });
+  late.forEach(x => {
+    let best = days[0];
+    days.forEach(d => { if (load[d] < load[best]) best = d; });
+    x.day = best;
+    load[best] += Number(x.minutes) || 30;
+  });
+  return late.length;
+}
+function rebuildDayMinutes(t) {
+  if (!(t.subtasks || []).some(x => Number(x.minutes) > 0)) return;
+  const dm = {};
+  t.subtasks.forEach(x => { if (x.day && Number(x.minutes) > 0) dm[x.day] = (dm[x.day] || 0) + Number(x.minutes); });
+  if (Object.keys(dm).length) t.dayMinutes = dm; else delete t.dayMinutes;
+}
+function catchUpTask(t) {
+  const snap = snapshotState();
+  const n = catchUpSteps(t.subtasks || [], t.dueDate);
+  if (!n) return;
+  rebuildDayMinutes(t);
+  saveTasks();
+  renderAll();
+  showUndoToast(`Moved ${n} missed step${n === 1 ? "" : "s"} of “${t.title}” forward`, snap);
+}
+function moveStepToDay(tid, idx, d) {
+  const t = tasks.find(x => x.id === tid);
+  const x = t && (t.subtasks || [])[idx];
+  if (!x || x.day === d) return;
+  if ((t.dueDate && d > t.dueDate) || (t.startDate && d < t.startDate)) {
+    showSimpleToast("Outside the window", `“${t.title}” runs ${t.startDate || "…"} to ${t.dueDate || "…"} — drop the step inside that range.`);
+    return;
+  }
+  const snap = snapshotState();
+  x.day = d;
+  rebuildDayMinutes(t);
+  saveTasks();
+  renderAll();
+  showUndoToast(`Moved step “${x.text}” to ${new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" })}`, snap);
+}
+
+/* modal: progress line + respread offer */
+function updateBigProgress() {
+  const box = document.getElementById("big-progress");
+  if (!box) return;
+  const st = modalSubtasks.length >= 2 ? bigStatsFor(modalSubtasks) : null;
+  if (!st) { box.style.display = "none"; return; }
+  box.style.display = "flex";
+  box.innerHTML = `<div class="bp-bar"><i style="width:${st.pct}%"></i></div><span class="bp-label">${st.pct}% done · <b class="week-state ${st.state}">${bigStateLabel(st)}</b></span>${st.state === "behind" ? `<button type="button" class="btn-secondary bp-catchup">Catch up</button>` : ""}`;
+  const b = box.querySelector(".bp-catchup");
+  if (b) b.addEventListener("click", () => {
+    catchUpSteps(modalSubtasks, document.getElementById("task-due-date").value);
+    renderSubtaskEditor(); syncDayPlanFromSteps();
+  });
+}
+function respreadDays() {
+  const today = todayStr();
+  const due = document.getElementById("task-due-date").value;
+  if (!due) return [];
+  const start = document.getElementById("task-start-date").value || today;
+  let from = start > today ? start : today;
+  if (from > due) from = start <= due ? start : due;
+  const days = [];
+  for (let d = from, n = 0; d <= due && n < 60; d = dateShift(d, 1), n++) days.push(d);
+  return days;
+}
+function offerRespread() {
+  const note = document.getElementById("respread-note");
+  if (!note) return;
+  const open = modalSubtasks.filter(x => !x.done);
+  const days = respreadDays();
+  if (!open.some(x => x.day) || !days.length) { note.style.display = "none"; return; }
+  note.style.display = "flex";
+  note.innerHTML = `<span>Dates changed. Respread ${open.length} unfinished step${open.length === 1 ? "" : "s"} across ${days.length} day${days.length === 1 ? "" : "s"}?</span><button type="button" class="btn-secondary" data-act="yes">Respread</button><button type="button" class="btn-secondary" data-act="no">Keep as is</button>`;
+  note.querySelector('[data-act="no"]').addEventListener("click", () => { note.style.display = "none"; });
+  note.querySelector('[data-act="yes"]').addEventListener("click", () => {
+    open.forEach((x, i) => { x.day = days[Math.min(days.length - 1, Math.floor(i * days.length / open.length))]; });
+    if (modalSubtasks.some(x => Number(x.minutes) > 0)) { dayPlanManual = new Set(); modalDayMinutes = {}; }
+    note.style.display = "none";
+    renderSubtaskEditor(); syncDayPlanFromSteps();
+  });
+}
+
+/* ---------- week controls, summary, month ---------- */
+function syncWeekControls() {
+  const panel = document.getElementById("week");
+  panel.classList.toggle("compact", !!weekView.compact);
+  document.getElementById("week-compact").classList.toggle("is-on", !!weekView.compact);
+  document.querySelectorAll(".week-seg-btn").forEach(b => b.classList.toggle("is-on", b.dataset.wmode === weekView.mode));
+  const month = weekView.mode === "month";
+  ["week-goals-card", "week-bars-card", "week-days", "week-summary"].forEach(id => { document.getElementById(id).style.display = month ? "none" : ""; });
+  document.getElementById("month-view").style.display = month ? "block" : "none";
+  const sel = document.getElementById("wf-cat");
+  if (document.activeElement !== sel) {
+    sel.innerHTML = `<option value="">All</option>` + categories.map(c => `<option value="${escapeAttr(c.name)}"${c.name === weekView.cat ? " selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
+  }
+  document.getElementById("wf-hide-done").checked = !!weekView.hideDone;
+  document.getElementById("wf-only-big").checked = !!weekView.onlyBig;
+  document.getElementById("wf-reset").style.display = (weekView.cat || weekView.hideDone || weekView.onlyBig) ? "inline-block" : "none";
+}
+document.querySelectorAll(".week-seg-btn").forEach(b => b.addEventListener("click", () => { weekView.mode = b.dataset.wmode; saveWeekView(); renderWeek(); }));
+document.getElementById("week-compact").addEventListener("click", () => { weekView.compact = !weekView.compact; saveWeekView(); renderWeek(); });
+document.getElementById("wf-cat").addEventListener("change", (e) => { weekView.cat = e.target.value; saveWeekView(); renderWeek(); });
+document.getElementById("wf-hide-done").addEventListener("change", (e) => { weekView.hideDone = e.target.checked; saveWeekView(); renderWeek(); });
+document.getElementById("wf-only-big").addEventListener("change", (e) => { weekView.onlyBig = e.target.checked; saveWeekView(); renderWeek(); });
+document.getElementById("wf-reset").addEventListener("click", () => { weekView.cat = ""; weekView.hideDone = false; weekView.onlyBig = false; saveWeekView(); renderWeek(); });
+
+function renderWeekSummary(days, today) {
+  const el = document.getElementById("week-summary");
+  const vis = tasks.filter(weekVisible);
+  const capMin = Math.round(weekCapacityHours() * 60);
+  const loadV = d => vis.reduce((sum, t) => {
+    if (t.completed) return sum;
+    if (t.dayMinutes) return sum + (Number(t.dayMinutes[d]) || 0);
+    return t.dueDate === d ? sum + (Number(t.estimate) || 0) : sum;
+  }, 0);
+  const loads = days.map(loadV);
+  const planned = loads.reduce((a, b) => a + b, 0);
+  const busyI = loads.indexOf(Math.max(...loads));
+  const dueWeek = vis.filter(t => days.includes(t.dueDate));
+  const doneT = dueWeek.filter(t => t.completed).length;
+  let sTot = 0, sDone = 0;
+  vis.forEach(t => (t.subtasks || []).forEach(x => { if (x.day && days.includes(x.day)) { sTot++; if (x.done) sDone++; } }));
+  const tracked = sessions.filter(s => days.includes(s.date) && (!weekView.cat || s.category === weekView.cat)).reduce((a, s) => a + (Number(s.minutes) || 0), 0);
+  const total = capMin * 7;
+  const pct = total ? Math.min(100, Math.round(planned / total * 100)) : 0;
+  const busy = loads[busyI] > 0 ? `${new Date(days[busyI] + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })} · ${formatMinutesLabel(loads[busyI])}` : "—";
+  const tile = (k, v) => `<div class="ws-tile"><span>${k}</span><strong>${v}</strong></div>`;
+  el.innerHTML = `
+    <div class="ws-tiles">
+      ${tile("Planned", `${formatMinutesLabel(planned) || "0m"} <small>of ${formatMinutesLabel(total)}</small>`)}
+      ${tile("Tasks done", `${doneT}/${dueWeek.length}`)}
+      ${tile("Steps done", `${sDone}/${sTot}`)}
+      ${tile("Tracked", formatMinutesLabel(tracked) || "0m")}
+      ${tile("Busiest day", busy)}
+    </div>
+    <div class="ws-bar" title="${pct}% of this week's capacity planned"><i style="width:${pct}%"></i></div>`;
+}
+
+function renderMonth() {
+  const box = document.getElementById("month-view");
+  const now = new Date();
+  const first = new Date(now.getFullYear(), now.getMonth() + monthOffset, 1, 12);
+  const month = first.getMonth();
+  const lead = (first.getDay() + 6) % 7;
+  const dim = new Date(first.getFullYear(), month + 1, 0).getDate();
+  const rows = Math.ceil((lead + dim) / 7);
+  const gridStart = new Date(first); gridStart.setDate(1 - lead);
+  const today = todayStr();
+  const thisMon = getWeekRange(0).start;
+  document.getElementById("week-range-label").textContent = first.toLocaleDateString(undefined, { month: "long", year: "numeric" }) + (monthOffset === 0 ? " · this month" : "");
+  let html = `<div class="month-head">${["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map(n => `<span>${n}</span>`).join("")}</div><div class="month-grid">`;
+  for (let i = 0; i < rows * 7; i++) {
+    const dt = new Date(gridStart); dt.setDate(gridStart.getDate() + i);
+    const d = formatDate(dt);
+    const due = tasks.filter(t => weekVisible(t) && t.dueDate === d);
+    const win = tasks.filter(t => weekVisible(t) && !t.completed && t.startDate && t.dueDate && t.startDate <= d && d < t.dueDate);
+    const mins = loadOn(d);
+    const items = [
+      ...due.map(t => ({ t, cls: t.completed ? " is-done" : "", txt: t.title })),
+      ...win.map(t => ({ t, cls: " win", txt: "▶ " + t.title })),
+    ];
+    const shown = items.slice(0, 3);
+    html += `<div class="month-cell${dt.getMonth() !== month ? " other" : ""}${d === today ? " is-today" : ""}" data-date="${d}">
+      <div class="month-num"><b>${dt.getDate()}</b>${mins ? `<span>${formatMinutesLabel(mins)}</span>` : ""}</div>
+      ${shown.map(it => { const c = getCategoryColor(it.t.category); return `<div class="month-item${it.cls}" data-id="${it.t.id}" style="background:${c}33;border-color:${c}" title="${escapeAttr(it.t.title)}">${escapeHtml(it.txt)}</div>`; }).join("")}
+      ${items.length > 3 ? `<div class="month-more">+${items.length - 3} more</div>` : ""}
+    </div>`;
+  }
+  box.innerHTML = html + "</div>";
+  box.querySelectorAll(".month-item").forEach(el => el.addEventListener("click", (e) => { e.stopPropagation(); openModal(el.dataset.id); }));
+  box.querySelectorAll(".month-cell").forEach(el => el.addEventListener("click", () => {
+    const dt = new Date(el.dataset.date + "T12:00:00");
+    const mon = new Date(dt); mon.setDate(dt.getDate() - ((dt.getDay() + 6) % 7)); mon.setHours(0, 0, 0, 0);
+    weekOffset = Math.round((mon - thisMon) / (7 * 86400000));
+    weekView.mode = "week"; saveWeekView();
+    renderWeek();
+  }));
+}
 
 function renderAll() {
   renderGreeting();

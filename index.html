@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=22" />
+<link rel="stylesheet" href="style.css?v=23" />
 </head>
 <body>
 
@@ -319,10 +319,19 @@
         <button class="btn-secondary" id="week-today">This week</button>
         <button class="icon-btn" id="week-next" title="Next week">&#8250;</button>
       </div>
-      <div class="week-add-btns"><label class="week-capacity" title="Hours you want to work per day (same as the time budget in Priority Queue)">Capacity <input type="number" id="week-capacity" min="0.5" max="16" step="0.5" /> h/day</label><button class="btn-secondary" id="week-export" title="Download this week as a calendar file">Export .ics</button><button class="btn-secondary" id="week-add-task">+ Add task</button><button class="btn-primary" id="week-add-big">+ Add big task</button></div>
+      <div class="week-add-btns"><span class="week-seg" role="group" aria-label="View"><button type="button" class="week-seg-btn" data-wmode="week">Week</button><button type="button" class="week-seg-btn" data-wmode="month">Month</button></span><button type="button" class="btn-secondary" id="week-compact" title="Show one line per task">Compact</button><label class="week-capacity" title="Hours you want to work per day (same as the time budget in Priority Queue)">Capacity <input type="number" id="week-capacity" min="0.5" max="16" step="0.5" /> h/day</label><button class="btn-secondary" id="week-export" title="Download this week as a calendar file">Export .ics</button><button class="btn-secondary" id="week-add-task">+ Add task</button><button class="btn-primary" id="week-add-big">+ Add big task</button></div>
     </div>
 
-    <section class="card week-focus-goals">
+    <div class="week-filters" id="week-filters">
+      <label>Category <select id="wf-cat"></select></label>
+      <label class="merge-toggle"><input type="checkbox" id="wf-hide-done" /> hide completed</label>
+      <label class="merge-toggle"><input type="checkbox" id="wf-only-big" /> only big tasks</label>
+      <button type="button" class="week-filter-reset" id="wf-reset" style="display:none;">Clear filters</button>
+    </div>
+
+    <section class="week-summary" id="week-summary"></section>
+
+    <section class="card week-focus-goals" id="week-goals-card">
       <div class="week-section-head">
         <h2>Goals for the week</h2>
         <span class="week-section-hint" id="week-goals-count"></span>
@@ -334,7 +343,7 @@
       </div>
     </section>
 
-    <section class="card week-goals-card">
+    <section class="card week-goals-card" id="week-bars-card">
       <div class="week-section-head">
         <h2>Big tasks &amp; goals</h2>
         <span class="week-section-hint">Bars run from the day you start to the day it's due. Click one to edit.</span>
@@ -345,6 +354,7 @@
     </section>
 
     <section class="week-days" id="week-days"></section>
+    <section class="month-view" id="month-view" style="display:none;"></section>
   </main>
 
   <!-- ===== ACHIEVEMENTS PANEL ===== -->
@@ -525,6 +535,8 @@
 
       <div class="field" id="subtasks-field">
         <span>Checklist (optional)</span>
+        <div class="big-progress" id="big-progress" style="display:none;"></div>
+        <div class="respread-note" id="respread-note" style="display:none;"></div>
         <div class="subtask-editor" id="subtask-editor"></div>
         <div class="subtask-add-row">
           <input type="text" id="subtask-new" placeholder="Add a step, press Enter" maxlength="120" />
@@ -715,6 +727,6 @@
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=25"></script>
+<script src="app.js?v=26"></script>
 </body>
 </html>
