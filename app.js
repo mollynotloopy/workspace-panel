@@ -1094,6 +1094,10 @@ function openModal(taskId = null) {
   document.getElementById("task-start-date").value = "";
   modalDayMinutes = t && t.dayMinutes ? { ...t.dayMinutes } : {};
   dayPlanManual = new Set(Object.keys(modalDayMinutes));
+  {
+    const stepSum = t && Array.isArray(t.subtasks) ? t.subtasks.reduce((n, x) => n + (Number(x.minutes) || 0), 0) : 0;
+    estimateManual = !!(t && t.estimate && Number(t.estimate) !== stepSum);
+  }
   document.querySelector(".template-save-row").style.display = "block";
   modalSubtasks = t && Array.isArray(t.subtasks) ? t.subtasks.map(x => ({ ...x })) : [];
   renderSubtaskEditor();
@@ -1134,6 +1138,7 @@ function openModal(taskId = null) {
 
   renderSubtaskEditor();
   renderDayPlan();
+  updateEstimateTools();
   overlay.classList.add("open");
 }
 
@@ -2933,6 +2938,7 @@ function renderSubtaskEditor() {
     minInput.addEventListener("input", () => {
       const v = parseInt(minInput.value, 10);
       if (v > 0) step.minutes = v; else delete step.minutes;
+      syncEstimateFromSteps();
       syncDayPlanFromSteps();
     });
     row.querySelector(".sub-box").addEventListener("click", () => {
@@ -2947,6 +2953,8 @@ function renderSubtaskEditor() {
     row.querySelector(".sub-del").addEventListener("click", () => {
       modalSubtasks.splice(i, 1);
       renderSubtaskEditor();
+      syncEstimateFromSteps();
+      syncDayPlanFromSteps();
     });
     box.appendChild(row);
   });
@@ -2964,6 +2972,7 @@ function addSubtaskFromInput() {
   modalSubtasks.push({ id: uid(), text, done: false });
   input.value = "";
   renderSubtaskEditor();
+  updateEstimateTools();
   input.focus();
 }
 document.getElementById("subtask-add-btn").addEventListener("click", addSubtaskFromInput);
@@ -4121,6 +4130,54 @@ function renderUpgrade3() {
 /* ---------- time per day for big tasks ---------- */
 let modalDayMinutes = {};
 let dayPlanManual = new Set();
+let estimateManual = false;
+
+function stepsTotal() {
+  return modalSubtasks.reduce((n, x) => n + (Number(x.minutes) || 0), 0);
+}
+// big task total follows the step times until you type your own estimate
+function syncEstimateFromSteps() {
+  const sum = stepsTotal();
+  if (sum > 0 && !estimateManual) document.getElementById("task-estimate").value = sum;
+  else if (sum === 0 && !estimateManual && modalSubtasks.length) { /* keep whatever is there */ }
+  updateEstimateTools();
+  if (typeof updateDayPlanTotal === "function") updateDayPlanTotal();
+}
+function updateEstimateTools() {
+  const box = document.getElementById("estimate-tools");
+  if (!box) return;
+  box.style.display = modalSubtasks.length ? "flex" : "none";
+  const sum = stepsTotal();
+  const est = Number(document.getElementById("task-estimate").value) || 0;
+  const hint = document.getElementById("estimate-hint");
+  if (!sum) hint.textContent = "Give steps a time and the total fills in for you.";
+  else if (!estimateManual && est === sum) hint.textContent = `Auto: ${formatMinutesLabel(sum)} from your steps`;
+  else hint.textContent = `Steps add up to ${formatMinutesLabel(sum)}`;
+  document.getElementById("use-steps-total-btn").style.display = sum && est !== sum ? "inline-block" : "none";
+}
+document.getElementById("task-estimate").addEventListener("input", () => { estimateManual = true; updateEstimateTools(); });
+document.getElementById("use-steps-total-btn").addEventListener("click", () => {
+  estimateManual = false;
+  syncEstimateFromSteps();
+  syncDayPlanFromSteps();
+});
+document.getElementById("split-steps-btn").addEventListener("click", () => {
+  const est = Number(document.getElementById("task-estimate").value) || 0;
+  const targets = modalSubtasks.filter(x => !x.done && String(x.text || "").trim());
+  if (!est) { showSimpleToast("Add an estimate first", "Enter the total estimated minutes, then split it across your steps."); return; }
+  if (!targets.length) { showSimpleToast("No open steps", "Add some steps first."); return; }
+  const base = Math.floor(est / targets.length / 5) * 5;
+  let used = 0;
+  targets.forEach((x, i) => {
+    const m = i === targets.length - 1 ? est - used : base;
+    if (m > 0) x.minutes = m; else delete x.minutes;
+    used += base;
+  });
+  estimateManual = true;
+  renderSubtaskEditor();
+  syncDayPlanFromSteps();
+  updateEstimateTools();
+});
 
 // days whose time comes from step minutes follow the steps until you type that day's time yourself
 function syncDayPlanFromSteps() {

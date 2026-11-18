@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=20" />
+<link rel="stylesheet" href="style.css?v=21" />
 </head>
 <body>
 
@@ -507,6 +507,11 @@
         <span>Estimated time (minutes)</span>
         <input type="number" id="task-estimate" min="0" step="5" placeholder="e.g. 30" />
       </label>
+      <div class="estimate-tools" id="estimate-tools" style="display:none;">
+        <span class="estimate-hint" id="estimate-hint"></span>
+        <button type="button" class="btn-secondary" id="split-steps-btn" title="Divide the estimate evenly across your checklist steps">Split across steps</button>
+        <button type="button" class="date-quick-btn" id="use-steps-total-btn" title="Set the estimate to the total of your step times">Use steps total</button>
+      </div>
 
       <label class="field">
         <span>Link (optional)</span>
@@ -710,6 +715,6 @@
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=23"></script>
+<script src="app.js?v=24"></script>
 </body>
 </html>
