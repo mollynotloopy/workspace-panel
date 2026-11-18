@@ -851,7 +851,7 @@ function renderTaskItem(t, showCategory) {
     metaParts.push(`<button type="button" class="sub-chip${subsDone === subs.length ? " all-done" : ""}" title="Show checklist">&#9745; ${subsDone}/${subs.length}</button>`);
   }
   const subsHtml = subs.length && subsOpen
-    ? `<div class="subtask-list">${subs.map((x, i) => `<div class="sub-row${x.done ? " is-done" : ""}" data-i="${i}"><span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="sub-text">${escapeHtml(x.text)}</span>${x.day ? `<span class="sub-daytag${!x.done && x.day < todayStr() ? " late" : ""}">${new Date(x.day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })}</span>` : ""}</div>`).join("")}</div>`
+    ? `<div class="subtask-list">${subs.map((x, i) => `<div class="sub-row${x.done ? " is-done" : ""}" data-i="${i}"><span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="sub-text">${escapeHtml(x.text)}${x.minutes ? ` <em class="sub-mintag">${formatMinutesLabel(x.minutes)}</em>` : ""}</span>${x.day ? `<span class="sub-daytag${!x.done && x.day < todayStr() ? " late" : ""}">${new Date(x.day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })}</span>` : ""}</div>`).join("")}</div>`
     : "";
 
   const today = todayStr();
@@ -1093,6 +1093,7 @@ function openModal(taskId = null) {
   document.getElementById("start-field").style.display = "block";
   document.getElementById("task-start-date").value = "";
   modalDayMinutes = t && t.dayMinutes ? { ...t.dayMinutes } : {};
+  dayPlanManual = new Set(Object.keys(modalDayMinutes));
   document.querySelector(".template-save-row").style.display = "block";
   modalSubtasks = t && Array.isArray(t.subtasks) ? t.subtasks.map(x => ({ ...x })) : [];
   renderSubtaskEditor();
@@ -2888,6 +2889,7 @@ function cleanSubtasks(arr, fresh) {
     .map(x => {
       const o = { id: fresh ? uid() : (x.id || uid()), text: String(x.text).trim(), done: fresh ? false : !!x.done };
       if (!fresh && x.day && /^\d{4}-\d{2}-\d{2}$/.test(x.day)) o.day = x.day;
+      if (!fresh && Number(x.minutes) > 0) o.minutes = Math.round(Number(x.minutes));
       return o;
     });
 }
@@ -2915,6 +2917,7 @@ function renderSubtaskEditor() {
     row.innerHTML = `
       <span class="sub-box${step.done ? " done" : ""}" title="Mark step done">&#10003;</span>
       <input type="text" value="${escapeAttr(step.text)}" maxlength="120" />
+      <input type="number" class="sub-min" min="0" max="960" step="5" placeholder="min" title="Minutes for this step" value="${step.minutes || ""}" />
       <select class="sub-day" title="Day to work on this step"></select>
       <button type="button" class="sub-del" title="Remove step">&times;</button>
     `;
@@ -2925,7 +2928,13 @@ function renderSubtaskEditor() {
     };
     fillDays();
     daySel.addEventListener("mousedown", fillDays);
-    daySel.addEventListener("change", () => { if (daySel.value) step.day = daySel.value; else delete step.day; });
+    daySel.addEventListener("change", () => { if (daySel.value) step.day = daySel.value; else delete step.day; syncDayPlanFromSteps(); });
+    const minInput = row.querySelector(".sub-min");
+    minInput.addEventListener("input", () => {
+      const v = parseInt(minInput.value, 10);
+      if (v > 0) step.minutes = v; else delete step.minutes;
+      syncDayPlanFromSteps();
+    });
     row.querySelector(".sub-box").addEventListener("click", () => {
       step.done = !step.done;
       renderSubtaskEditor();
@@ -3357,7 +3366,7 @@ function renderWeek() {
     steps.forEach(({ t, x }) => {
       const row = document.createElement("div");
       row.className = "week-step" + (x.done ? " is-done" : "");
-      row.innerHTML = `<span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="week-step-text">${escapeHtml(x.text)}<small>${escapeHtml(t.title)}</small></span>`;
+      row.innerHTML = `<span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="week-step-text">${escapeHtml(x.text)}<small>${escapeHtml(t.title)}${x.minutes ? " · " + formatMinutesLabel(x.minutes) : ""}</small></span>`;
       row.querySelector(".sub-box").addEventListener("click", (e) => {
         e.stopPropagation();
         x.done = !x.done;
@@ -3548,6 +3557,7 @@ document.getElementById("spread-steps-btn").addEventListener("click", () => {
   if (!pending.length) { showSimpleToast("No steps to spread", "Add some steps first. Steps that already have a day are left alone."); return; }
   pending.forEach((x, i) => { x.day = days[Math.min(days.length - 1, Math.floor(i * days.length / pending.length))]; });
   renderSubtaskEditor();
+  syncDayPlanFromSteps();
   showSimpleToast("Steps spread out", `${pending.length} step${pending.length === 1 ? "" : "s"} placed across ${days.length} day${days.length === 1 ? "" : "s"}. Adjust any of them below.`);
 });
 
@@ -4022,7 +4032,7 @@ function renderFocus() {
       <button type="button" class="btn-secondary" id="focus-done">Mark done</button>
       <button type="button" class="btn-ghost" id="focus-skip">Skip for now</button>
     </div>
-    ${subs.length ? `<div class="focus-steps">${subs.map((x, i) => `<div class="focus-step${x.done ? " is-done" : ""}${x.day === today ? " is-today" : ""}" data-i="${i}"><span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span>${escapeHtml(x.text)}</span>${x.day ? `<small>${new Date(x.day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })}</small>` : ""}</div>`).join("")}</div>` : ""}
+    ${subs.length ? `<div class="focus-steps">${subs.map((x, i) => `<div class="focus-step${x.done ? " is-done" : ""}${x.day === today ? " is-today" : ""}" data-i="${i}"><span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span>${escapeHtml(x.text)}${x.minutes ? ` <em class="focus-step-min">${formatMinutesLabel(x.minutes)}</em>` : ""}</span>${x.day ? `<small>${new Date(x.day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" })}</small>` : ""}</div>`).join("")}</div>` : ""}
     ${t.notes ? `<p class="focus-notes">${escapeHtml(t.notes)}</p>` : ""}`;
   document.getElementById("focus-toggle").addEventListener("click", () => {
     document.querySelector('.timer-mode-btn[data-timer-mode="task"]').click();
@@ -4110,6 +4120,20 @@ function renderUpgrade3() {
 
 /* ---------- time per day for big tasks ---------- */
 let modalDayMinutes = {};
+let dayPlanManual = new Set();
+
+// days whose time comes from step minutes follow the steps until you type that day's time yourself
+function syncDayPlanFromSteps() {
+  const days = dayPlanDays();
+  if (days.length) {
+    days.forEach(d => {
+      if (dayPlanManual.has(d)) return;
+      const sum = modalSubtasks.reduce((n, x) => n + (x.day === d ? (Number(x.minutes) || 0) : 0), 0);
+      if (sum > 0) modalDayMinutes[d] = sum; else delete modalDayMinutes[d];
+    });
+    renderDayPlan();
+  }
+}
 
 // minutes a task asks for on a given day
 function minutesOn(t, day) {
@@ -4159,6 +4183,7 @@ function renderDayPlan() {
     row.innerHTML = `<span>${label}</span><input type="number" min="0" max="960" step="15" placeholder="0" value="${modalDayMinutes[d] || ""}" /><em>min</em>`;
     row.querySelector("input").addEventListener("input", (e) => {
       const v = parseInt(e.target.value, 10);
+      dayPlanManual.add(d);
       if (v > 0) modalDayMinutes[d] = v; else delete modalDayMinutes[d];
       updateDayPlanTotal();
     });
@@ -4184,7 +4209,7 @@ function updateDayPlanTotal() {
   document.getElementById(id).addEventListener("change", renderDayPlan);
 });
 document.getElementById("start-clear").addEventListener("click", renderDayPlan);
-document.getElementById("day-plan-clear").addEventListener("click", () => { modalDayMinutes = {}; renderDayPlan(); });
+document.getElementById("day-plan-clear").addEventListener("click", () => { modalDayMinutes = {}; dayPlanManual = new Set(); syncDayPlanFromSteps(); renderDayPlan(); });
 document.getElementById("day-plan-split").addEventListener("click", () => {
   let days = dayPlanDays();
   const est = Number(document.getElementById("task-estimate").value) || 0;
@@ -4194,6 +4219,7 @@ document.getElementById("day-plan-split").addEventListener("click", () => {
     if (wk.length) days = wk;
   }
   modalDayMinutes = {};
+  dayPlanManual = new Set(days);
   const base = Math.floor(est / days.length / 5) * 5;
   let used = 0;
   days.forEach((d, i) => {
