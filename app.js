@@ -1773,6 +1773,7 @@ function populateTimerTaskSelect() {
   if (current && eligible.some(t => t.id === current)) {
     select.value = current;
   }
+  if (typeof updateTimerDisplay === "function" && timerTaskId) updateTimerDisplay();
 }
 
 function currentTimerTask() {
@@ -1794,11 +1795,16 @@ function updateTimerDisplay() {
   const estimateLabel = document.getElementById("timer-estimate-label");
   const alertBox = document.getElementById("timer-alert");
 
-  if (task && task.estimate) {
-    const estimateSeconds = Number(task.estimate) * 60;
+  const tStep = task ? openStepFor(task, todayStr()) : null;
+  const stepMin = tStep && Number(tStep.minutes) > 0 ? Number(tStep.minutes) : 0;
+  const targetMin = task ? (stepMin || Number(task.estimate) || 0) : 0;
+  if (task && targetMin) {
+    const estimateSeconds = targetMin * 60;
     const pct = Math.min(100, (timerSeconds / estimateSeconds) * 100);
     bar.style.width = pct + "%";
-    estimateLabel.textContent = `Estimated ${task.estimate} min`;
+    estimateLabel.textContent = stepMin
+      ? `Estimated ${stepMin} min for this step · “${tStep.text}”`
+      : `Estimated ${targetMin} min`;
 
     if (timerSeconds >= estimateSeconds) {
       bar.classList.add("over");
