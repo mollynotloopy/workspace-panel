@@ -4620,23 +4620,17 @@ function renderMonth() {
   }));
 }
 
+let lastRenderErrorAt = 0;
 function renderAll() {
-  renderGreeting();
-  renderCalendar();
-  renderStats();
-  populateCategorySelects();
-  renderTasks();
-  renderPriorityQueue();
-  renderWeek();
-  populateTemplateSelects();
-  renderReviewNudge();
-  renderMoveBanner();
-  populateTimerTaskSelect();
-  renderSessionList();
-  renderAchievements();
-  renderSummary();
-  renderNextAchievement();
-  renderUpgrade3();
+  [renderGreeting, renderCalendar, renderStats, populateCategorySelects, renderTasks, renderPriorityQueue, renderWeek, populateTemplateSelects, renderReviewNudge, renderMoveBanner, populateTimerTaskSelect, renderSessionList, renderAchievements, renderSummary, renderNextAchievement, renderUpgrade3].forEach(fn => {
+    try { fn(); } catch (e) {
+      console.error("render failed:", fn.name, e);
+      if (Date.now() - lastRenderErrorAt > 8000) {
+        lastRenderErrorAt = Date.now();
+        try { showSimpleToast("Display problem", `${fn.name}: ${e && e.message ? e.message : e}`); } catch (_) {}
+      }
+    }
+  });
 }
 
 migrateFreeSessions();
