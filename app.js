@@ -1099,7 +1099,12 @@ function openModal(taskId = null) {
   const isSeriesEdit = !!(t && t.recurringId);
 
   document.getElementById("task-status-select").value = t ? getTaskStatus(t) : "not-started";
-  document.getElementById("task-actual-minutes").value = "";
+  {
+    const am = document.getElementById("task-actual-minutes");
+    const logged = t ? todaysMinutesFor(t.id) : 0;
+    am.value = logged > 0 ? logged : "";
+    am.dataset.orig = logged;
+  }
 
   const deleteBtn = document.getElementById("delete-task-btn");
   deleteBtn.style.display = taskId ? "inline-block" : "none";
@@ -1390,9 +1395,12 @@ form.addEventListener("submit", (e) => {
       targetTask.completedOn = null;
       targetTask.completedAt = null;
     }
-    if (manualMinutes > 0) {
-      sessions.push({ id: uid(), taskId: targetTask.id, category: targetTask.category, date: todayStr(), minutes: manualMinutes });
-      saveSessions();
+    {
+      // the field shows today's total for this task (timer + manual); saving replaces it instead of adding
+      const raw = document.getElementById("task-actual-minutes").value.trim();
+      const orig = Number(document.getElementById("task-actual-minutes").dataset.orig) || 0;
+      const want = raw === "" ? 0 : Math.max(0, manualMinutes || 0);
+      if (want !== orig) setTodayMinutes(targetTask.id, want, targetTask);
     }
     if (editScope !== "series") {
       const steps = cleanSubtasks(modalSubtasks, false);
@@ -2857,6 +2865,7 @@ document.addEventListener("keydown", (e) => {
     if (document.getElementById("focus-overlay").classList.contains("open")) closeFocus();
     else if (document.getElementById("palette-overlay").classList.contains("open")) closePalette();
     else if (document.getElementById("review-overlay").classList.contains("open")) closeReview();
+    else if (document.getElementById("worked-overlay").classList.contains("open")) closeWorked();
     else if (document.getElementById("settings-overlay").classList.contains("open")) closeSettings();
     else if (overlay.classList.contains("open")) closeModal();
     return;
@@ -4619,6 +4628,74 @@ function renderMonth() {
     renderWeek();
   }));
 }
+
+/* ===================== Worked today: one source of truth ===================== */
+function todaysMinutesFor(taskId) {
+  const today = todayStr();
+  return sessions.filter(s => s.date === today && s.taskId === taskId).reduce((a, s) => a + (Number(s.minutes) || 0), 0);
+}
+// replace today's logged time for a task with a single consolidated session
+function setTodayMinutes(taskId, minutes, task) {
+  const today = todayStr();
+  const mine = sessions.filter(s => s.date === today && s.taskId === taskId);
+  const first = mine[0];
+  sessions = sessions.filter(s => !(s.date === today && s.taskId === taskId));
+  const m = Math.round(Number(minutes) || 0);
+  if (m > 0) {
+    const tk = task || tasks.find(x => x.id === taskId);
+    const rec = { id: first ? first.id : uid(), taskId, category: (first && first.category) || (tk && tk.category) || "", date: today, minutes: m };
+    if (first && first.name) rec.name = first.name;
+    sessions.push(rec);
+  }
+  saveSessions();
+}
+function openWorked() {
+  renderWorked();
+  document.getElementById("worked-overlay").classList.add("open");
+}
+function closeWorked() { document.getElementById("worked-overlay").classList.remove("open"); }
+function refreshAfterWorkedEdit() { renderStats(); renderSessionList(); renderWorked(); try { renderWeek(); } catch (_) {} }
+function renderWorked() {
+  const today = todayStr();
+  const ids = [...new Set(sessions.filter(s => s.date === today).map(s => s.taskId))];
+  const list = document.getElementById("worked-list");
+  list.innerHTML = "";
+  let total = 0;
+  if (!ids.length) list.innerHTML = `<div class="empty-state">Nothing logged yet today.</div>`;
+  ids.forEach(id => {
+    const t = tasks.find(x => x.id === id);
+    const mins = todaysMinutesFor(id);
+    total += mins;
+    const row = document.createElement("div");
+    row.className = "worked-row";
+    const first = sessions.find(s => s.date === today && s.taskId === id);
+    const title = t ? t.title : (first && first.name) || "Deleted task";
+    const cat = t ? t.category : (first && first.category) || "";
+    row.innerHTML = `<span class="worked-name"><b>${escapeHtml(title)}</b><small>${escapeHtml(cat)}${t && t.estimate ? " · est " + formatMinutesLabel(Number(t.estimate)) : ""}</small></span>
+      <input type="number" min="0" step="5" value="${mins}" title="Minutes today" /><span class="worked-unit">min</span>
+      <button type="button" class="sub-del" title="Remove this time">&times;</button>`;
+    const inp = row.querySelector("input");
+    inp.addEventListener("change", () => { setTodayMinutes(id, parseInt(inp.value, 10) || 0, t); refreshAfterWorkedEdit(); });
+    row.querySelector(".sub-del").addEventListener("click", () => { setTodayMinutes(id, 0, t); refreshAfterWorkedEdit(); });
+    list.appendChild(row);
+  });
+  document.getElementById("worked-total").textContent = `Total today: ${formatMinutesLabel(total) || "0h"}`;
+  const sel = document.getElementById("worked-add-task");
+  const cands = tasks.filter(x => !x.archived && (!x.completed || x.completedOn === today)).slice().sort((a, b) => (a.title || "").localeCompare(b.title || ""));
+  sel.innerHTML = `<option value="">Add time to a task…</option>` + cands.map(x => `<option value="${x.id}">${escapeHtml(x.title)}</option>`).join("");
+}
+document.getElementById("stat-worked-card").addEventListener("click", openWorked);
+document.getElementById("stat-worked-card").addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openWorked(); } });
+document.getElementById("worked-close").addEventListener("click", closeWorked);
+document.getElementById("worked-overlay").addEventListener("click", (e) => { if (e.target.id === "worked-overlay") closeWorked(); });
+document.getElementById("worked-add-btn").addEventListener("click", () => {
+  const id = document.getElementById("worked-add-task").value;
+  const m = parseInt(document.getElementById("worked-add-min").value, 10);
+  if (!id || !(m > 0)) return;
+  setTodayMinutes(id, todaysMinutesFor(id) + m);
+  document.getElementById("worked-add-min").value = "";
+  refreshAfterWorkedEdit();
+});
 
 let lastRenderErrorAt = 0;
 function renderAll() {

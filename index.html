@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=23" />
+<link rel="stylesheet" href="style.css?v=24" />
 </head>
 <body>
 
@@ -75,7 +75,7 @@
         <span class="stat-label">Est. Time Today</span>
         <span class="stat-value" id="stat-time">0h</span>
       </div>
-      <div class="card stat-card">
+      <div class="card stat-card stat-clickable" id="stat-worked-card" role="button" tabindex="0" title="See and edit today's time per task">
         <span class="stat-label">Worked Today</span>
         <span class="stat-value" id="stat-worked">0h</span>
       </div>
@@ -562,7 +562,7 @@
           </select>
         </label>
         <div class="field" id="actual-minutes-field">
-          <span>Log time spent today (minutes, optional)</span>
+          <span>Time logged today (minutes) <small class="field-hint">includes timer sessions; editing replaces, never adds</small></span>
           <input type="number" id="task-actual-minutes" min="0" step="5" placeholder="e.g. 25" />
         </div>
       </div>
@@ -590,6 +590,24 @@
       <button type="button" class="edit-scope-btn" data-review-week="-1">Last week</button>
     </div>
     <div id="review-body" class="review-body"></div>
+  </div>
+</div>
+
+<!-- ===== Worked today breakdown ===== -->
+<div class="modal-overlay" id="worked-overlay">
+  <div class="modal worked-modal">
+    <div class="modal-header">
+      <h2>Worked today</h2>
+      <button class="icon-btn" id="worked-close">&times;</button>
+    </div>
+    <p class="settings-note">Timer sessions and time you log in a task all land here. Edit a number to correct it; it replaces, it doesn't add.</p>
+    <div class="worked-list" id="worked-list"></div>
+    <div class="worked-total" id="worked-total"></div>
+    <div class="worked-add">
+      <select id="worked-add-task"></select>
+      <input type="number" id="worked-add-min" min="1" step="5" placeholder="min" />
+      <button type="button" class="btn-secondary" id="worked-add-btn">Add</button>
+    </div>
   </div>
 </div>
 
@@ -727,6 +745,6 @@
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=30"></script>
+<script src="app.js?v=31"></script>
 </body>
 </html>
