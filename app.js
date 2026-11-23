@@ -826,7 +826,7 @@ function renderTaskItem(t, showCategory) {
   const pMeta = PRIORITY_META[t.priority] || PRIORITY_META.medium;
   const status = getTaskStatus(t);
   const item = document.createElement("div");
-  const partDone = !t.completed && isBigTask(t) && t.dueDate > todayStr() && t.dayDone && t.dayDone[todayStr()];
+  const partDone = partDoneOn(t, todayStr()) || (!t.completed && isBigTask(t) && t.dueDate > todayStr() && !isWorkableToday(t, todayStr()) && (t.subtasks || []).some(x => x.day));
   item.className = "task-item" + (t.completed ? " completed" : "") + (partDone ? " part-done" : "") + ` status-${status}`;
   item.style.borderLeftColor = pMeta.color;
 
@@ -848,6 +848,7 @@ function renderTaskItem(t, showCategory) {
   const subs = Array.isArray(t.subtasks) ? t.subtasks : [];
   const subsDone = subs.filter(x => x.done).length;
   const subsOpen = expandedTasks.has(t.id);
+  if (partDone) metaParts.push(`<span class="recurring-badge big-state on" title="Nothing left to do on this task today">&#10003; today's part done</span>`);
   const bst = (!t.completed && subs.length) ? bigStatsFor(subs) : null;
   if (bst && (isBigTask(t) || subs.some(x => x.day))) {
     metaParts.push(`<span class="recurring-badge big-state ${bst.state}" title="Progress of the checklist">${bst.pct}% · ${bigStateLabel(bst)}</span>`);
@@ -3294,11 +3295,21 @@ function openStepFor(t, today) {
   // first unfinished step planned for today or earlier
   return (t.subtasks || []).find(x => !x.done && x.day && x.day <= today) || null;
 }
+// a big task whose planned work for day d is finished (ticked, or all of that day's steps done)
+function partDoneOn(t, d) {
+  if (t.completed || !(t.startDate && t.dueDate && t.startDate < t.dueDate) || t.dueDate <= d) return false;
+  if (t.dayDone && t.dayDone[d]) return true;
+  const on = (t.subtasks || []).filter(x => x.day === d);
+  return on.length > 0 && on.every(x => x.done);
+}
 function isWorkableToday(t, today) {
   if (t.completed || t.archived) return false;
   if (!t.dueDate) return !!openStepFor(t, today);
   if (t.dueDate <= today) return true;
+  if (t.dayDone && t.dayDone[today]) return false;
   if (openStepFor(t, today)) return true;
+  const subs = t.subtasks || [];
+  if (subs.some(x => x.day)) return false; // planned by day: nothing open for today means done for today
   return !!(t.startDate && t.startDate <= today);
 }
 
@@ -3457,7 +3468,7 @@ function renderWeek() {
       chip.className = "week-working";
       chip.title = "Working window — click to edit";
       const am = t.dayMinutes && t.dayMinutes[d] > 0 ? t.dayMinutes[d] : 0;
-      const dd = !!(t.dayDone && t.dayDone[d]);
+      const dd = partDoneOn(t, d);
       if (dd) chip.classList.add("day-done");
       chip.innerHTML = `<span class="week-chip-box${dd ? " on" : ""}" title="Mark this day's part done">${dd ? "&#10003;" : ""}</span> ${escapeHtml(t.title)}${am ? ` <b>${formatMinutesLabel(am)}</b>` : ""}`;
       chip.querySelector(".week-chip-box").addEventListener("click", (e) => { e.stopPropagation(); toggleDayDone(t, d); });
