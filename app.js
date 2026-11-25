@@ -112,6 +112,7 @@ function applyCloudState(data) {
   cloudApplyingRemote = true;
   if (Array.isArray(data.tasks)) { tasks = data.tasks; localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks)); }
   if (Array.isArray(data.sessions)) { sessions = data.sessions; localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions)); }
+  migrateStepDoneDates();
   if (data.unlockedAchievements) { unlockedAchievements = data.unlockedAchievements; localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(unlockedAchievements)); }
   if (Array.isArray(data.categories)) { categories = data.categories; localStorage.setItem(CATEGORIES_KEY, JSON.stringify(categories)); }
   if (Array.isArray(data.priorityQueueOrder)) { priorityQueueOrder = data.priorityQueueOrder; localStorage.setItem(PRIORITY_QUEUE_KEY, JSON.stringify(priorityQueueOrder)); }
@@ -271,6 +272,10 @@ function loadTasks() {
 }
 
 function saveTasks() {
+  if (reconcileStepTime()) {
+    localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
+    setTimeout(() => { try { renderStats(); renderSessionList(); } catch (_) {} }, 0);
+  }
   localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   schedulePush();
 }
@@ -284,6 +289,7 @@ function loadJSON(key, fallback) {
 }
 
 function saveSessions() {
+  reconcileStepTime();
   localStorage.setItem(SESSIONS_KEY, JSON.stringify(sessions));
   schedulePush();
 }
@@ -1862,7 +1868,7 @@ function renderSessionList() {
     const task = tasks.find(t => t.id === s.taskId);
     const label = s.name
       ? `${s.name} (${s.category})`
-      : (task ? task.title : "Deleted task");
+      : (task ? task.title : "Deleted task") + (s.fromSteps ? " (finished steps)" : "");
     return `
       <div class="session-item">
         <span class="session-task">${escapeHtml(label)}</span>
@@ -2790,6 +2796,7 @@ function applyImport(data, merge) {
   if (merge) {
     const beforeTasks = tasks.length;
     tasks = mergeById(tasks, Array.isArray(data.tasks) ? data.tasks : []);
+    migrateStepDoneDates();
     sessions = mergeById(sessions, Array.isArray(data.sessions) ? data.sessions : []);
     const incomingAch = data.unlockedAchievements && typeof data.unlockedAchievements === "object" ? data.unlockedAchievements : {};
     unlockedAchievements = { ...incomingAch, ...unlockedAchievements };
@@ -2803,6 +2810,7 @@ function applyImport(data, merge) {
     summaryMsg = `Merged in ${tasks.length - beforeTasks} new tasks`;
   } else {
     tasks = Array.isArray(data.tasks) ? data.tasks : [];
+    migrateStepDoneDates();
     sessions = Array.isArray(data.sessions) ? data.sessions : [];
     unlockedAchievements = data.unlockedAchievements && typeof data.unlockedAchievements === "object" ? data.unlockedAchievements : {};
     categories = Array.isArray(data.categories) && data.categories.length ? data.categories : DEFAULT_CATEGORIES;
@@ -2933,6 +2941,7 @@ function cleanSubtasks(arr, fresh) {
       const o = { id: fresh ? uid() : (x.id || uid()), text: String(x.text).trim(), done: fresh ? false : !!x.done };
       if (!fresh && x.day && /^\d{4}-\d{2}-\d{2}$/.test(x.day)) o.day = x.day;
       if (!fresh && Number(x.minutes) > 0) o.minutes = Math.round(Number(x.minutes));
+      if (!fresh && o.done && x.doneOn !== undefined) o.doneOn = x.doneOn;
       return o;
     });
 }
@@ -2962,7 +2971,7 @@ function renderSubtaskEditor() {
       <span class="sub-grip" draggable="true" title="Drag to reorder">&#8942;&#8942;</span>
       <span class="sub-box${step.done ? " done" : ""}" title="Mark step done">&#10003;</span>
       <input type="text" value="${escapeAttr(step.text)}" maxlength="120" />
-      <input type="number" class="sub-min" min="0" max="960" step="5" placeholder="min" title="Minutes for this step" value="${step.minutes || ""}" />
+      <input type="number" class="sub-min" min="0" max="960" step="1" placeholder="min" title="Minutes for this step" value="${step.minutes || ""}" />
       <select class="sub-day" title="Day to work on this step"></select>
       <button type="button" class="sub-del" title="Remove step">&times;</button>
     `;
@@ -4357,7 +4366,7 @@ function renderDayPlan() {
     const row = document.createElement("label");
     row.className = "day-plan-row";
     const label = new Date(d + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" });
-    row.innerHTML = `<span>${label}</span><input type="number" min="0" max="960" step="15" placeholder="0" value="${modalDayMinutes[d] || ""}" /><em>min</em>`;
+    row.innerHTML = `<span>${label}</span><input type="number" min="0" max="960" step="1" placeholder="0" value="${modalDayMinutes[d] || ""}" /><em>min</em>`;
     row.querySelector("input").addEventListener("input", (e) => {
       const v = parseInt(e.target.value, 10);
       dayPlanManual.add(d);
@@ -4630,6 +4639,47 @@ function renderMonth() {
 }
 
 /* ===================== Worked today: one source of truth ===================== */
+function finishedStepMinutes(t, day) {
+  return (t.subtasks || []).reduce((a, x) => a + (x.done && x.doneOn === day ? (Number(x.minutes) || 0) : 0), 0);
+}
+// Finished checklist steps count as time worked. Per task and day there is one "top-up" entry that
+// only fills the gap between the finished steps' minutes and what the timer / manual log already hold,
+// so timing a step and then ticking it never counts twice.
+function reconcileStepTime() {
+  if (!Array.isArray(tasks) || !Array.isArray(sessions)) return false;
+  if (!localStorage.getItem("molly-panel-steptime-v1")) {
+    migrateStepDoneDates();
+    localStorage.setItem("molly-panel-steptime-v1", "1");
+  }
+  const today = todayStr();
+  let changed = false;
+  tasks.forEach(t => {
+    (t.subtasks || []).forEach(x => {
+      if (x.done && x.doneOn === undefined) { x.doneOn = today; }
+      else if (!x.done && x.doneOn !== undefined) delete x.doneOn;
+    });
+    const mine = sessions.filter(s => s.date === today && s.taskId === t.id);
+    const top = mine.find(s => s.fromSteps);
+    const real = mine.reduce((a, s) => a + (s.fromSteps ? 0 : (Number(s.minutes) || 0)), 0);
+    const edit = t.timeEdit && t.timeEdit.date === today ? t.timeEdit : { covers: 0, base: 0 };
+    const want = Math.max(0, finishedStepMinutes(t, today) - edit.covers - Math.max(0, real - edit.base));
+    if (want === (top ? Number(top.minutes) : 0)) return;
+    changed = true;
+    if (!want) sessions = sessions.filter(s => s !== top);
+    else if (top) top.minutes = want;
+    else sessions.push({ id: uid(), taskId: t.id, category: t.category, date: today, minutes: want, fromSteps: true });
+  });
+  return changed;
+}
+// steps ticked before this existed: only ones planned for today count toward today
+function migrateStepDoneDates() {
+  const today = todayStr();
+  let touched = false;
+  tasks.forEach(t => (t.subtasks || []).forEach(x => {
+    if (x.done && x.doneOn === undefined) { x.doneOn = x.day === today ? today : (x.day && x.day < today ? x.day : ""); touched = true; }
+  }));
+  return touched;
+}
 function todaysMinutesFor(taskId) {
   const today = todayStr();
   return sessions.filter(s => s.date === today && s.taskId === taskId).reduce((a, s) => a + (Number(s.minutes) || 0), 0);
@@ -4637,6 +4687,9 @@ function todaysMinutesFor(taskId) {
 // replace today's logged time for a task with a single consolidated session
 function setTodayMinutes(taskId, minutes, task) {
   const today = todayStr();
+  const edited = task || tasks.find(x => x.id === taskId);
+  // remember what the finished steps accounted for, so a correction isn't topped back up
+  if (edited) edited.timeEdit = { date: today, covers: finishedStepMinutes(edited, today), base: Math.max(0, Math.round(Number(minutes) || 0)) };
   const mine = sessions.filter(s => s.date === today && s.taskId === taskId);
   const first = mine[0];
   sessions = sessions.filter(s => !(s.date === today && s.taskId === taskId));
@@ -4647,6 +4700,7 @@ function setTodayMinutes(taskId, minutes, task) {
     if (first && first.name) rec.name = first.name;
     sessions.push(rec);
   }
+  if (edited) localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   saveSessions();
 }
 function openWorked() {
@@ -4672,7 +4726,7 @@ function renderWorked() {
     const title = t ? t.title : (first && first.name) || "Deleted task";
     const cat = t ? t.category : (first && first.category) || "";
     row.innerHTML = `<span class="worked-name"><b>${escapeHtml(title)}</b><small>${escapeHtml(cat)}${t && t.estimate ? " · est " + formatMinutesLabel(Number(t.estimate)) : ""}</small></span>
-      <input type="number" min="0" step="5" value="${mins}" title="Minutes today" /><span class="worked-unit">min</span>
+      <input type="number" min="0" step="1" value="${mins}" title="Minutes today" /><span class="worked-unit">min</span>
       <button type="button" class="sub-del" title="Remove this time">&times;</button>`;
     const inp = row.querySelector("input");
     inp.addEventListener("change", () => { setTodayMinutes(id, parseInt(inp.value, 10) || 0, t); refreshAfterWorkedEdit(); });
@@ -4711,6 +4765,7 @@ function renderAll() {
 }
 
 migrateFreeSessions();
+saveTasks();
 renderAll();
 applyTaskTimerState();
 if (freeTimer.startedAt && !timerRunning) {

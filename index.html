@@ -515,7 +515,7 @@
 
       <label class="field">
         <span>Estimated time (minutes)</span>
-        <input type="number" id="task-estimate" min="0" step="5" placeholder="e.g. 30" />
+        <input type="number" id="task-estimate" min="0" step="1" placeholder="e.g. 30" />
       </label>
       <div class="estimate-tools" id="estimate-tools" style="display:none;">
         <span class="estimate-hint" id="estimate-hint"></span>
@@ -562,8 +562,8 @@
           </select>
         </label>
         <div class="field" id="actual-minutes-field">
-          <span>Time logged today (minutes) <small class="field-hint">includes timer sessions; editing replaces, never adds</small></span>
-          <input type="number" id="task-actual-minutes" min="0" step="5" placeholder="e.g. 25" />
+          <span>Time logged today (minutes) <small class="field-hint">includes timer + finished steps; editing replaces, never adds</small></span>
+          <input type="number" id="task-actual-minutes" min="0" step="1" placeholder="e.g. 25" />
         </div>
       </div>
 
@@ -600,12 +600,12 @@
       <h2>Worked today</h2>
       <button class="icon-btn" id="worked-close">&times;</button>
     </div>
-    <p class="settings-note">Timer sessions and time you log in a task all land here. Edit a number to correct it; it replaces, it doesn't add.</p>
+    <p class="settings-note">Timer sessions, finished checklist steps and time you log in a task all land here. Edit a number to correct it; it replaces, it doesn't add.</p>
     <div class="worked-list" id="worked-list"></div>
     <div class="worked-total" id="worked-total"></div>
     <div class="worked-add">
       <select id="worked-add-task"></select>
-      <input type="number" id="worked-add-min" min="1" step="5" placeholder="min" />
+      <input type="number" id="worked-add-min" min="1" step="1" placeholder="min" />
       <button type="button" class="btn-secondary" id="worked-add-btn">Add</button>
     </div>
   </div>
@@ -745,6 +745,6 @@
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=31"></script>
+<script src="app.js?v=32"></script>
 </body>
 </html>
