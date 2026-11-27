@@ -7,7 +7,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Pixelify+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=24" />
+<link rel="stylesheet" href="style.css?v=25" />
 </head>
 <body>
 
@@ -35,6 +35,7 @@
     <div class="tabbar-inner">
       <button class="tab active" data-tab="workspace">Workspace</button>
       <button class="tab" data-tab="week">Week</button>
+      <button class="tab" data-tab="donelog">Done</button>
       <button class="tab" data-tab="pomodoro">Timer</button>
       <button class="tab" data-tab="achievements">Achievements</button>
     </div>
@@ -304,6 +305,19 @@
         <div id="session-list" class="session-list"></div>
       </section>
     </div>
+  </main>
+
+  <!-- ===== DONE LOG PANEL ===== -->
+  <main id="donelog" class="panel">
+    <header class="greeting">
+      <p class="greeting-eyebrow">Done log</p>
+      <h1>What you got done</h1>
+    </header>
+    <div class="week-filters">
+      <label>Category <select id="dl-cat"></select></label>
+    </div>
+    <div class="dl-days" id="dl-days"></div>
+    <button type="button" class="btn-secondary" id="dl-more">Show earlier days</button>
   </main>
 
   <!-- ===== WEEK PANEL ===== -->
@@ -745,6 +759,6 @@
 </div>
 
 <script src="firebase-config.js?v=1"></script>
-<script src="app.js?v=32"></script>
+<script src="app.js?v=33"></script>
 </body>
 </html>

@@ -1933,3 +1933,14 @@ a.template-save-btn { text-decoration: none; margin-left: 12px; }
 .worked-add { display: flex; gap: 8px; }
 .worked-add select { flex: 1; min-width: 0; font-family: inherit; padding: 5px 6px; background: var(--bg-input); color: var(--text-main); border: 2px solid var(--outline); }
 .worked-add input { width: 70px; font-family: inherit; padding: 5px 6px; border: 2px solid var(--outline); background: var(--bg-input); color: var(--text-main); }
+
+/* done log */
+.dl-days { display: flex; flex-direction: column; gap: 14px; margin-bottom: 14px; }
+.dl-head { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; flex-wrap: wrap; margin-bottom: 6px; }
+.dl-head h2 small, .dl-head > span { font-size: 12px; color: var(--text-sub); font-weight: 400; }
+.dl-day h4, .dl-inline h3 { font-size: 12px; color: var(--text-sub); margin: 8px 0 6px; text-transform: uppercase; letter-spacing: .04em; }
+.dl-step { display: flex; align-items: center; gap: 10px; padding: 6px 10px; margin-bottom: 5px; border: 2px solid var(--outline); border-left-width: 5px; background: var(--bg-input); cursor: pointer; color: var(--text-main); }
+.dl-step .sub-box { flex-shrink: 0; }
+.dl-text { display: flex; flex-direction: column; min-width: 0; font-size: 13.5px; }
+.dl-text small { font-size: 11px; color: var(--text-sub); }
+.dl-inline { margin-top: 12px; }

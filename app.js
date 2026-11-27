@@ -742,6 +742,7 @@ function renderTasks() {
       : statusFilter !== "all"
         ? `<div class="empty-state">Nothing here with that status.</div>`
         : `<div class="empty-state">No tasks here yet — type one into Quick add above, or press <kbd>n</kbd> ✨</div>`;
+    appendFinishedSteps(container, filterCat);
     return;
   }
 
@@ -813,6 +814,7 @@ function renderTasks() {
       headingClass: "completed-heading", dotClass: "completed-dot", items: completedTasks, showCategory: true,
     }));
   }
+  appendFinishedSteps(container, filterCat);
 }
 
 function dueLabelInfo(t) {
@@ -3494,7 +3496,7 @@ function renderWeek() {
       list.appendChild(chip);
     });
     const steps = [];
-    tasks.forEach(t => (t.subtasks || []).forEach((x, si) => { if (x.day === d && weekVisible(t) && !t.completed && !(weekView.hideDone && x.done)) steps.push({ t, x, si }); }));
+    tasks.forEach(t => (t.subtasks || []).forEach((x, si) => { if (weekVisible(t) && (x.done ? (!weekView.hideDone && stepDoneDay(t, x) === d) : (x.day === d && !t.completed))) steps.push({ t, x, si }); }));
     steps.sort((a, b) => (a.x.done - b.x.done));
     steps.forEach(({ t, x, si }) => {
       const row = document.createElement("div");
@@ -3504,13 +3506,12 @@ function renderWeek() {
         row.addEventListener("dragstart", (e) => { weekDragStep = { tid: t.id, idx: si }; weekDragId = null; row.classList.add("dragging"); e.dataTransfer.effectAllowed = "move"; try { e.dataTransfer.setData("text/plain", x.text); } catch (_) {} });
         row.addEventListener("dragend", () => { weekDragStep = null; row.classList.remove("dragging"); document.querySelectorAll(".week-day.drop-target").forEach(c => c.classList.remove("drop-target")); });
       }
-      row.innerHTML = `<span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="week-step-text">${escapeHtml(x.text)}<small>${escapeHtml(t.title)}${x.minutes ? " · " + formatMinutesLabel(x.minutes) : ""}</small></span>`;
+      row.innerHTML = `<span class="sub-box${x.done ? " done" : ""}">&#10003;</span><span class="week-step-text">${escapeHtml(x.text)}<small>${escapeHtml(t.title)}${x.minutes ? " · " + formatMinutesLabel(x.minutes) : ""}${x.done && x.day && x.day !== d ? " · planned " + new Date(x.day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short" }) : ""}</small></span>`;
       row.querySelector(".sub-box").addEventListener("click", (e) => {
         e.stopPropagation();
         x.done = !x.done;
         saveTasks();
-        renderTasks();
-        renderWeek();
+        renderAll();
       });
       row.addEventListener("click", () => openModal(t.id));
       list.appendChild(row);
@@ -4751,9 +4752,95 @@ document.getElementById("worked-add-btn").addEventListener("click", () => {
   refreshAfterWorkedEdit();
 });
 
+/* ===================== Done log: what was finished on which day ===================== */
+// the day a ticked step counts for (older ticks fall back to their planned day)
+function stepDoneDay(t, x) {
+  if (!x.done) return "";
+  if (x.doneOn) return x.doneOn;
+  if (x.day && x.day <= todayStr()) return x.day;
+  return t.completedOn || "";
+}
+function finishedStepsOn(day, cat) {
+  const out = [];
+  tasks.forEach(t => {
+    if (cat && cat !== "all" && t.category !== cat) return;
+    (t.subtasks || []).forEach((x, i) => { if (x.done && stepDoneDay(t, x) === day) out.push({ t, x, i }); });
+  });
+  return out;
+}
+function finishedStepRow(t, x) {
+  const c = getCategoryColor(t.category);
+  const row = document.createElement("div");
+  row.className = "dl-step";
+  row.style.borderLeftColor = c;
+  row.innerHTML = `<span class="sub-box done" title="Untick this step">&#10003;</span><span class="dl-text">${escapeHtml(x.text)}<small>${escapeHtml(t.title)} · ${escapeHtml(t.category || "")}${x.minutes ? " · " + formatMinutesLabel(Number(x.minutes)) : ""}</small></span>`;
+  row.querySelector(".sub-box").addEventListener("click", (e) => { e.stopPropagation(); x.done = false; saveTasks(); renderAll(); });
+  row.addEventListener("click", () => openModal(t.id));
+  return row;
+}
+function appendFinishedSteps(container, filterCat) {
+  if (searchTerm.length > 0 || statusFilter !== "all") return;
+  const day = selectedDate || todayStr();
+  const list = finishedStepsOn(day, filterCat);
+  if (!list.length) return;
+  const wrap = document.createElement("section");
+  wrap.className = "dl-inline";
+  wrap.innerHTML = `<h3>Steps finished ${day === todayStr() ? "today" : new Date(day + "T12:00:00").toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} <span>${list.length}</span></h3>`;
+  list.forEach(({ t, x }) => wrap.appendChild(finishedStepRow(t, x)));
+  container.appendChild(wrap);
+}
+let doneLogSpan = 14;
+function renderDoneLog() {
+  const box = document.getElementById("dl-days");
+  if (!box) return;
+  const sel = document.getElementById("dl-cat");
+  const cat = sel.value || "";
+  if (document.activeElement !== sel) {
+    sel.innerHTML = `<option value="">All</option>` + categories.map(c => `<option value="${escapeAttr(c.name)}"${c.name === cat ? " selected" : ""}>${escapeHtml(c.name)}</option>`).join("");
+  }
+  box.innerHTML = "";
+  const today = todayStr();
+  for (let n = 0; n < doneLogSpan; n++) {
+    const day = dateShift(today, -n);
+    const steps = finishedStepsOn(day, cat);
+    const done = tasks.filter(t => t.completed && t.completedOn === day && (!cat || t.category === cat));
+    const worked = sessions.filter(s => s.date === day && (!cat || s.category === cat)).reduce((a, s) => a + (Number(s.minutes) || 0), 0);
+    if (!steps.length && !done.length && !worked) continue;
+    const card = document.createElement("section");
+    card.className = "card dl-day";
+    const label = n === 0 ? "Today" : n === 1 ? "Yesterday" : new Date(day + "T12:00:00").toLocaleDateString(undefined, { weekday: "long" });
+    const parts = [];
+    if (done.length) parts.push(`${done.length} task${done.length === 1 ? "" : "s"}`);
+    if (steps.length) parts.push(`${steps.length} step${steps.length === 1 ? "" : "s"}`);
+    if (worked) parts.push(`${formatMinutesLabel(worked)} worked`);
+    card.innerHTML = `<div class="dl-head"><h2>${label} <small>${new Date(day + "T12:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" })}</small></h2><span>${parts.join(" · ")}</span></div>`;
+    if (steps.length) {
+      card.insertAdjacentHTML("beforeend", `<h4>Subtasks finished</h4>`);
+      steps.forEach(({ t, x }) => card.appendChild(finishedStepRow(t, x)));
+    }
+    if (done.length) {
+      card.insertAdjacentHTML("beforeend", `<h4>Tasks completed</h4>`);
+      done.forEach(t => {
+        const row = document.createElement("div");
+        row.className = "dl-step";
+        row.style.borderLeftColor = getCategoryColor(t.category);
+        const mins = sessions.filter(s => s.date === day && s.taskId === t.id).reduce((a, s) => a + (Number(s.minutes) || 0), 0);
+        row.innerHTML = `<span class="sub-box done is-static">&#10003;</span><span class="dl-text">${escapeHtml(t.title)}<small>${escapeHtml(t.category || "")}${mins ? " · " + formatMinutesLabel(mins) + " that day" : ""}</small></span>`;
+        row.addEventListener("click", () => openModal(t.id));
+        card.appendChild(row);
+      });
+    }
+    box.appendChild(card);
+  }
+  if (!box.children.length) box.innerHTML = `<div class="empty-state">Nothing finished in the last ${doneLogSpan} days.</div>`;
+}
+document.getElementById("dl-cat").addEventListener("change", (e) => { e.target.blur(); renderDoneLog(); });
+document.getElementById("dl-more").addEventListener("click", () => { doneLogSpan += 14; renderDoneLog(); });
+document.querySelector('.tab[data-tab="donelog"]').addEventListener("click", () => renderDoneLog());
+
 let lastRenderErrorAt = 0;
 function renderAll() {
-  [renderGreeting, renderCalendar, renderStats, populateCategorySelects, renderTasks, renderPriorityQueue, renderWeek, populateTemplateSelects, renderReviewNudge, renderMoveBanner, populateTimerTaskSelect, renderSessionList, renderAchievements, renderSummary, renderNextAchievement, renderUpgrade3].forEach(fn => {
+  [renderGreeting, renderCalendar, renderStats, populateCategorySelects, renderTasks, renderPriorityQueue, renderWeek, populateTemplateSelects, renderReviewNudge, renderMoveBanner, populateTimerTaskSelect, renderSessionList, renderAchievements, renderSummary, renderNextAchievement, renderUpgrade3, renderDoneLog].forEach(fn => {
     try { fn(); } catch (e) {
       console.error("render failed:", fn.name, e);
       if (Date.now() - lastRenderErrorAt > 8000) {
